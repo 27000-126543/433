@@ -6,11 +6,11 @@ import { StatusBadge } from '@/components/common/StatusBadge';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
 import { useAlert } from '@/context/AlertContext';
 import { usePermission } from '@/hooks/usePermission';
+import { useFilter } from '@/context/FilterContext';
 import { api } from '@/mock/api';
 import { formatDateTime, formatNumber } from '@/utils/format';
 import { emissionStandards } from '@/mock/data/flueGas';
 import { generateComplianceReport, generateMonthlyReport, downloadCSV } from '@/utils/reportGenerator';
-import { useFilter } from '@/context/FilterContext';
 
 export const FlueGasPage: React.FC = () => {
   const { flueGas, isConnected } = useRealtimeData(true);
@@ -24,6 +24,10 @@ export const FlueGasPage: React.FC = () => {
   const [lastUploadTime, setLastUploadTime] = useState(new Date());
   const [showReviewModal, setShowReviewModal] = useState(false);
   const [rectificationNotice, setRectificationNotice] = useState<any>(null);
+  const [showPreviewModal, setShowPreviewModal] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewData, setPreviewData] = useState<any>(null);
+  const [pendingExport, setPendingExport] = useState<{ type: 'monthly' | 'compliance'; fileName: string } | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -71,7 +75,9 @@ export const FlueGasPage: React.FC = () => {
     }
   };
 
-  const handleExport = async (type: 'monthly' | 'compliance') => {
+  const openPreview = async (type: 'monthly' | 'compliance') => {
+    setPreviewLoading(true);
+    setShowPreviewModal(true);
     try {
       const now = new Date();
       const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
@@ -79,24 +85,39 @@ export const FlueGasPage: React.FC = () => {
         shift: selectedShift === 'all' ? '全部班次' : selectedShift === 'day' ? '白班' : '夜班',
         date: selectedDate || '全部日期',
       };
-      
-      if (type === 'compliance') {
-        const data = await generateComplianceReport(monthStr, filterInfo);
-        const datePart = selectedDate ? `_${selectedDate}` : '';
-        const shiftPart = selectedShift !== 'all' ? `_${filterInfo.shift}` : '';
-        const fileName = `环保合规明细_${monthStr}${datePart}${shiftPart}.csv`;
-        downloadCSV(data.csvContent, fileName);
-      } else {
-        const data = await generateMonthlyReport(monthStr, filterInfo);
-        const datePart = selectedDate ? `_${selectedDate}` : '';
-        const shiftPart = selectedShift !== 'all' ? `_${filterInfo.shift}` : '';
-        const fileName = `月度运营分析报告_${monthStr}${datePart}${shiftPart}.csv`;
-        downloadCSV(data.csvContent, fileName);
-      }
+
+      const datePart = selectedDate ? `_${selectedDate}` : '';
+      const shiftPart = selectedShift !== 'all' ? `_${filterInfo.shift}` : '';
+      const fileName = type === 'monthly'
+        ? `月度运营分析报告_${monthStr}${datePart}${shiftPart}.csv`
+        : `环保合规明细_${monthStr}${datePart}${shiftPart}.csv`;
+
+      const data = type === 'monthly'
+        ? await generateMonthlyReport(monthStr, filterInfo)
+        : await generateComplianceReport(monthStr, filterInfo);
+
+      setPreviewData(data);
+      setPendingExport({ type, fileName });
     } catch (error) {
-      console.error('Export failed:', error);
-      alert('导出失败，请稍后重试');
+      console.error('Preview failed:', error);
+    } finally {
+      setPreviewLoading(false);
     }
+  };
+
+  const confirmDownload = () => {
+    if (pendingExport && previewData) {
+      downloadCSV(previewData.csvContent, pendingExport.fileName);
+    }
+    setShowPreviewModal(false);
+    setPreviewData(null);
+    setPendingExport(null);
+  };
+
+  const closePreview = () => {
+    setShowPreviewModal(false);
+    setPreviewData(null);
+    setPendingExport(null);
   };
 
   useEffect(() => {
@@ -363,7 +384,7 @@ export const FlueGasPage: React.FC = () => {
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-base font-semibold text-white">净化药剂库存</h3>
             <button
-              onClick={() => handleExport('compliance')}
+              onClick={() => openPreview('compliance')}
               className="px-3 py-1.5 bg-slate-700 hover:bg-slate-600 text-white text-xs rounded-lg transition-colors flex items-center gap-2"
             >
               <Download className="w-3 h-3" />
@@ -447,14 +468,14 @@ export const FlueGasPage: React.FC = () => {
               <p className="text-sm text-slate-400 mb-3">快速操作</p>
               <div className="grid grid-cols-2 gap-3">
                 <button
-                  onClick={() => handleExport('compliance')}
+                  onClick={() => openPreview('compliance')}
                   className="p-3 bg-blue-500/20 hover:bg-blue-500/30 text-blue-400 rounded-lg transition-colors text-sm"
                 >
                   <Download className="w-4 h-4 mx-auto mb-1" />
                   环保合规明细
                 </button>
                 <button
-                  onClick={() => handleExport('monthly')}
+                  onClick={() => openPreview('monthly')}
                   className="p-3 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 rounded-lg transition-colors text-sm"
                 >
                   <Download className="w-4 h-4 mx-auto mb-1" />
@@ -480,6 +501,210 @@ export const FlueGasPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showPreviewModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+          <div className="bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl w-full max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between p-5 border-b border-slate-700/50">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-gradient-to-br from-blue-500/30 to-cyan-500/30 border border-blue-500/30">
+                  <FileText className="w-5 h-5 text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="text-lg font-semibold text-white">报表预览</h2>
+                  <p className="text-xs text-slate-400">
+                    {pendingExport?.type === 'monthly' ? '月度运营分析报告' : '环保合规明细报告'}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={closePreview}
+                className="p-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5 space-y-4">
+              {previewLoading ? (
+                <div className="flex items-center justify-center py-12">
+                  <div className="w-10 h-10 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin" />
+                  <span className="ml-3 text-slate-400">正在生成预览...</span>
+                </div>
+              ) : previewData?.summary ? (
+                <>
+                  <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                    <h3 className="text-sm font-medium text-slate-300 mb-3">筛选条件</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1">月份</p>
+                        <p className="text-sm font-medium text-white">{previewData.summary.month}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-slate-500 mb-1">班次</p>
+                        <p className="text-sm font-medium text-white">{previewData.summary.filterInfo?.shift}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-xs text-slate-500 mb-1">日期范围</p>
+                        <p className="text-sm font-medium text-white">{previewData.summary.filterInfo?.date}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                    <h3 className="text-sm font-medium text-slate-300 mb-3">记录数量</h3>
+                    <div className="grid grid-cols-3 gap-3">
+                      {Object.entries(previewData.summary.records || {}).map(([key, val]) => (
+                        <div key={key} className="text-center">
+                          <p className="text-2xl font-bold font-mono text-blue-400">{String(val)}</p>
+                          <p className="text-[10px] text-slate-500 mt-0.5">
+                            {key === 'vehicles' ? '车辆' :
+                             key === 'incineratorHistory' ? '焚烧记录' :
+                             key === 'workOrders' ? '运维工单' :
+                             key === 'flueGasList' ? '烟气检测' :
+                             key === 'envAlerts' ? '环保告警' :
+                             key === 'leachateList' ? '渗滤液数据' : key}
+                          </p>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
+                    <h3 className="text-sm font-medium text-slate-300 mb-3">关键指标汇总</h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {previewData.summary.type === 'monthly' ? (
+                        <>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">入场车辆</p>
+                            <p className="text-base font-mono font-bold text-white">{previewData.summary.keyMetrics?.vehicleCount || 0} 辆</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">接收垃圾</p>
+                            <p className="text-base font-mono font-bold text-white">{formatNumber(previewData.summary.keyMetrics?.wasteWeight || 0, 0)} 吨</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">运维工单</p>
+                            <p className="text-base font-mono font-bold text-white">{previewData.summary.keyMetrics?.workOrderCount || 0} 单</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">已完成</p>
+                            <p className="text-base font-mono font-bold text-emerald-400">{previewData.summary.keyMetrics?.completedOrders || 0} 单</p>
+                          </div>
+                        </>
+                      ) : (
+                        <>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">烟气检测次数</p>
+                            <p className="text-base font-mono font-bold text-white">{previewData.summary.keyMetrics?.flueGasTests || 0}</p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">环保合规率</p>
+                            <p className={`text-base font-mono font-bold ${
+                              parseFloat(previewData.summary.keyMetrics?.complianceRate || 0) >= 99
+                                ? 'text-emerald-400'
+                                : parseFloat(previewData.summary.keyMetrics?.complianceRate || 0) >= 95
+                                  ? 'text-amber-400'
+                                  : 'text-red-400'
+                            }`}>
+                              {previewData.summary.keyMetrics?.complianceRate || 0}%
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">超标记录</p>
+                            <p className={`text-base font-mono font-bold ${
+                              (previewData.summary.keyMetrics?.exceedCount || 0) > 0 ? 'text-red-400' : 'text-emerald-400'
+                            }`}>
+                              {previewData.summary.keyMetrics?.exceedCount || 0} 条
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-slate-500 mb-1">环保告警</p>
+                            <p className={`text-base font-mono font-bold ${
+                              (previewData.summary.envAlertsCount || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'
+                            }`}>
+                              {previewData.summary.envAlertsCount || 0} 条
+                            </p>
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  </div>
+
+                  {previewData.summary.type === 'compliance' && previewData.summary.exceedRecords?.length > 0 && (
+                    <div className="bg-red-500/10 rounded-xl p-4 border border-red-500/30">
+                      <div className="flex items-center gap-2 mb-3">
+                        <AlertTriangle className="w-4 h-4 text-red-400" />
+                        <h3 className="text-sm font-medium text-red-400">超标清单（前10条）</h3>
+                      </div>
+                      <div className="space-y-2">
+                        {previewData.summary.exceedRecords.map((r: any, i: number) => (
+                          <div key={i} className="flex items-center justify-between text-xs bg-slate-900/50 px-3 py-2 rounded-lg">
+                            <div className="flex items-center gap-2">
+                              <span className="px-1.5 py-0.5 bg-red-500/20 text-red-400 rounded text-[10px] font-medium">{r.type}</span>
+                              <span className="text-slate-400">{formatDateTime(r.time)}</span>
+                            </div>
+                            <span className="font-mono">
+                              <span className="text-red-400">{formatNumber(r.value, 1)}</span>
+                              <span className="text-slate-500"> / {r.standard} mg/m³</span>
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className={`rounded-xl p-4 border ${
+                    previewData.summary.type === 'compliance'
+                      ? (previewData.summary.keyMetrics?.exceedCount || 0) > 0
+                        ? 'bg-amber-500/10 border-amber-500/30'
+                        : 'bg-emerald-500/10 border-emerald-500/30'
+                      : 'bg-blue-500/10 border-blue-500/30'
+                  }`}>
+                    <div className="flex items-start gap-2">
+                      {previewData.summary.type === 'compliance' ? (
+                        (previewData.summary.keyMetrics?.exceedCount || 0) > 0
+                          ? <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                          : <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                      ) : <CheckCircle className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />}
+                      <div>
+                        <h3 className={`text-sm font-medium mb-1 ${
+                          previewData.summary.type === 'compliance'
+                            ? (previewData.summary.keyMetrics?.exceedCount || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'
+                            : 'text-blue-400'
+                        }`}>
+                          {previewData.summary.type === 'compliance' ? '环保合规结论' : '运营汇总结论'}
+                        </h3>
+                        <p className="text-sm text-slate-300">
+                          {previewData.summary.conclusion || '数据已生成，可直接下载使用'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </>
+              ) : null}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 p-5 border-t border-slate-700/50 bg-slate-800/30">
+              <button
+                onClick={closePreview}
+                disabled={previewLoading}
+                className="px-4 py-2 text-slate-300 hover:text-white hover:bg-slate-700 rounded-lg text-sm transition-colors disabled:opacity-50"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDownload}
+                disabled={previewLoading || !previewData}
+                className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white rounded-lg text-sm font-medium transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                <Download className="w-4 h-4" />
+                <span>确认下载</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {showReviewModal && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">

@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback } from 'react';
 import ReactECharts from 'echarts-for-react';
 import { EChartsOption } from 'echarts';
 
@@ -15,6 +15,8 @@ interface LineChartProps {
   smooth?: boolean;
   showLegend?: boolean;
   markLines?: { yAxis: number; label: string; color: string }[];
+  onPointClick?: (index: number, item: any) => void;
+  selectedIndex?: number | null;
 }
 
 export const LineChart: React.FC<LineChartProps> = ({
@@ -25,6 +27,8 @@ export const LineChart: React.FC<LineChartProps> = ({
   smooth = true,
   showLegend = true,
   markLines = [],
+  onPointClick,
+  selectedIndex = null,
 }) => {
   const colors = ['#0EA5E9', '#10B981', '#F59E0B', '#EF4444', '#8B5CF6', '#EC4899'];
 
@@ -70,14 +74,17 @@ export const LineChart: React.FC<LineChartProps> = ({
       type: 'line',
       smooth,
       symbol: 'circle',
-      symbolSize: 4,
-      showSymbol: false,
+      symbolSize: (val: any, params: any) => params.dataIndex === selectedIndex ? 8 : 4,
+      showSymbol: onPointClick ? true : false,
       lineStyle: {
         width: 2,
         color: s.color || colors[index % colors.length],
       },
       itemStyle: {
         color: s.color || colors[index % colors.length],
+        borderColor: '#fff',
+        borderWidth: 1,
+        cursor: onPointClick ? 'pointer' : 'default',
       },
       areaStyle: {
         color: {
@@ -110,6 +117,21 @@ export const LineChart: React.FC<LineChartProps> = ({
     })),
   };
 
+  const onEvents = useCallback(() => {
+    if (!onPointClick) return {};
+    return {
+      click: (params: any) => {
+        if (params.dataIndex !== undefined) {
+          onPointClick(params.dataIndex, {
+            index: params.dataIndex,
+            time: data[params.dataIndex]?.time,
+            raw: data[params.dataIndex],
+          });
+        }
+      },
+    };
+  }, [onPointClick, data]);
+
   if (!data || data.length === 0) {
     return (
       <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
@@ -118,5 +140,12 @@ export const LineChart: React.FC<LineChartProps> = ({
     );
   }
 
-  return <ReactECharts option={option} style={{ height }} opts={{ renderer: 'canvas' }} />;
+  return (
+    <ReactECharts
+      option={option}
+      style={{ height }}
+      opts={{ renderer: 'canvas' }}
+      onEvents={onEvents()}
+    />
+  );
 };

@@ -1,23 +1,42 @@
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
 
-export const formatNumber = (num: number, decimals: number = 2): string => {
-  return num.toFixed(decimals);
+export const formatNumber = (num: number | null | undefined, decimals: number = 2): string => {
+  if (num === null || num === undefined || isNaN(Number(num))) return '-';
+  return Number(num).toFixed(decimals);
 };
 
-export const formatDateTime = (date: string | Date): string => {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return format(d, 'yyyy-MM-dd HH:mm:ss', { locale: zhCN });
+export const formatDateTime = (date: string | Date | null | undefined): string => {
+  if (!date) return '-';
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '-';
+    return format(d, 'yyyy-MM-dd HH:mm:ss', { locale: zhCN });
+  } catch (e) {
+    return '-';
+  }
 };
 
-export const formatDate = (date: string | Date): string => {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return format(d, 'yyyy-MM-dd', { locale: zhCN });
+export const formatDate = (date: string | Date | null | undefined): string => {
+  if (!date) return '-';
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '-';
+    return format(d, 'yyyy-MM-dd', { locale: zhCN });
+  } catch (e) {
+    return '-';
+  }
 };
 
-export const formatTime = (date: string | Date): string => {
-  const d = typeof date === 'string' ? new Date(date) : date;
-  return format(d, 'HH:mm:ss', { locale: zhCN });
+export const formatTime = (date: string | Date | null | undefined): string => {
+  if (!date) return '-';
+  try {
+    const d = typeof date === 'string' ? new Date(date) : date;
+    if (isNaN(d.getTime())) return '-';
+    return format(d, 'HH:mm:ss', { locale: zhCN });
+  } catch (e) {
+    return '-';
+  }
 };
 
 export const formatLargeNumber = (num: number): string => {

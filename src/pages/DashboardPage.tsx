@@ -8,6 +8,12 @@ import {
   Package,
   Activity,
   Leaf,
+  X,
+  Thermometer,
+  Gauge,
+  Droplet,
+  AlertTriangle,
+  CheckCircle,
 } from 'lucide-react';
 import { MetricCard } from '@/components/dashboard/MetricCard';
 import { AlertMarquee } from '@/components/dashboard/AlertMarquee';
@@ -34,6 +40,10 @@ export const DashboardPage: React.FC = () => {
   const { alerts } = useAlert();
   const { incinerators, flueGas, isConnected } = useRealtimeData(true);
   const { selectedShift, selectedDate } = useFilter();
+  const [selectedIncineratorPoint, setSelectedIncineratorPoint] = useState<any>(null);
+  const [selectedFlueGasPoint, setSelectedFlueGasPoint] = useState<any>(null);
+  const [selectedPowerIdx, setSelectedPowerIdx] = useState<number | null>(null);
+  const [selectedChemicalIdx, setSelectedChemicalIdx] = useState<number | null>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -125,80 +135,181 @@ export const DashboardPage: React.FC = () => {
 
   const hasFilter = selectedShift !== 'all' || selectedDate;
 
-  const computedDashboardData = useMemo(() => {
+  const baselineStats = useMemo(() => {
     if (!rawDashboardData) return null;
-    const isFiltered = hasFilter;
-    
-    let todayVehicles = rawDashboardData.todayVehicles;
-    let todayWasteWeight = rawDashboardData.todayWasteWeight;
-    let incineratorLoad = rawDashboardData.incineratorLoad;
-    let equipmentAvailability = rawDashboardData.equipmentAvailability;
-    let emissionComplianceRate = rawDashboardData.emissionComplianceRate;
-    let totalPowerGeneration = rawDashboardData.totalPowerGeneration;
 
-    if (isFiltered) {
-      todayVehicles = filteredVehicles.length;
-      todayWasteWeight = filteredVehicles.reduce((sum, v) => sum + (v.weight || 0), 0);
-      todayWasteWeight = Math.round(todayWasteWeight);
-      
-      if (filteredIncineratorHistory.length > 0) {
-        const loads = filteredIncineratorHistory.map(i => {
-          if (typeof i.load1 === 'number' && typeof i.load2 === 'number' && typeof i.load3 === 'number') {
-            return (i.load1 + i.load2 + i.load3) / 3;
-          }
-          return i.load || 0;
-        });
-        if (loads.length > 0) {
-          incineratorLoad = Math.round(loads.reduce((a, b) => a + b, 0) / loads.length);
+    let incineratorLoad = rawDashboardData.incineratorLoad;
+    if (rawIncineratorHistory.length > 0) {
+      const loads = rawIncineratorHistory.map(i => {
+        if (typeof i.load1 === 'number' && typeof i.load2 === 'number' && typeof i.load3 === 'number') {
+          return (i.load1 + i.load2 + i.load3) / 3;
         }
+        return i.load || 0;
+      });
+      if (loads.length > 0) {
+        incineratorLoad = Math.round(loads.reduce((a, b) => a + b, 0) / loads.length);
       }
-      
-      if (filteredPowerData.actual.length > 0) {
-        totalPowerGeneration = filteredPowerData.actual.reduce((a, b) => a + b, 0);
-      } else {
-        totalPowerGeneration = 0;
-      }
-      
-      if (filteredFlueGasHistory.length > 0) {
-        const compliant = filteredFlueGasHistory.filter(f => f.isStandard).length;
-        emissionComplianceRate = Math.round((compliant / filteredFlueGasHistory.length) * 1000) / 10;
-      } else {
-        emissionComplianceRate = 0;
-      }
-      
-      const relevantWorkOrders = rawWorkOrders.filter(w => matchFilter(getTimeField(w), selectedShift, selectedDate));
-      if (relevantWorkOrders.length > 0) {
-        const completed = relevantWorkOrders.filter(w => w.status === 'completed').length;
-        equipmentAvailability = Math.round((completed / relevantWorkOrders.length) * 1000) / 10;
+    }
+
+    let totalPowerGeneration = rawDashboardData.totalPowerGeneration;
+    if (rawPowerData.actual.length > 0) {
+      totalPowerGeneration = rawPowerData.actual.reduce((a, b) => a + b, 0);
+    }
+
+    let emissionComplianceRate = rawDashboardData.emissionComplianceRate;
+    if (rawFlueGasHistory.length > 0) {
+      const compliant = rawFlueGasHistory.filter(f => f.isStandard).length;
+      emissionComplianceRate = Math.round((compliant / rawFlueGasHistory.length) * 1000) / 10;
+    }
+
+    const limeSum = rawChemicalData.lime.reduce((a, b) => a + b, 0);
+    const carbonSum = rawChemicalData.activatedCarbon.reduce((a, b) => a + b, 0);
+
+    return {
+      incineratorLoad,
+      totalPowerGeneration,
+      emissionComplianceRate,
+      equipmentAvailability: rawDashboardData.equipmentAvailability,
+      todayVehicles: rawDashboardData.todayVehicles,
+      todayWasteWeight: rawDashboardData.todayWasteWeight,
+      chemicalLime: limeSum,
+      chemicalCarbon: carbonSum,
+    };
+  }, [rawDashboardData, rawIncineratorHistory, rawFlueGasHistory, rawPowerData, rawChemicalData]);
+
+  const calcFilteredStats = (
+    incHist: any[],
+    fgHist: any[],
+    power: { actual: number[] },
+    chem: { lime: number[]; activatedCarbon: number[] },
+    vehicles: any[],
+    workOrders: any[]
+  ) => {
+    let incineratorLoad: number | null = null;
+    let totalPowerGeneration: number | null = null;
+    let emissionComplianceRate: number | null = null;
+    let equipmentAvailability: number | null = null;
+    let todayVehicles: number | null = null;
+    let todayWasteWeight: number | null = null;
+
+    if (incHist.length > 0) {
+      const loads = incHist.map(i => {
+        if (typeof i.load1 === 'number' && typeof i.load2 === 'number' && typeof i.load3 === 'number') {
+          return (i.load1 + i.load2 + i.load3) / 3;
+        }
+        return i.load || 0;
+      });
+      incineratorLoad = Math.round(loads.reduce((a, b) => a + b, 0) / loads.length);
+    }
+
+    if (power.actual.length > 0) {
+      totalPowerGeneration = power.actual.reduce((a, b) => a + b, 0);
+    } else {
+      totalPowerGeneration = 0;
+    }
+
+    if (fgHist.length > 0) {
+      const compliant = fgHist.filter(f => f.isStandard).length;
+      emissionComplianceRate = Math.round((compliant / fgHist.length) * 1000) / 10;
+    } else {
+      emissionComplianceRate = 0;
+    }
+
+    if (hasFilter) {
+      if (workOrders.length > 0) {
+        const completed = workOrders.filter(w => w.status === 'completed').length;
+        equipmentAvailability = Math.round((completed / workOrders.length) * 1000) / 10;
         equipmentAvailability = Math.max(85, Math.min(100, equipmentAvailability));
       }
     }
 
+    if (hasFilter) {
+      todayVehicles = vehicles.length;
+      todayWasteWeight = Math.round(vehicles.reduce((sum, v) => sum + (v.weight || 0), 0));
+    }
+
+    const chemicalLime = chem.lime.reduce((a, b) => a + b, 0);
+    const chemicalCarbon = chem.activatedCarbon.reduce((a, b) => a + b, 0);
+
     return {
-      ...rawDashboardData,
       incineratorLoad,
       totalPowerGeneration,
       emissionComplianceRate,
       equipmentAvailability,
       todayVehicles,
       todayWasteWeight,
+      chemicalLime,
+      chemicalCarbon,
     };
-  }, [rawDashboardData, filteredVehicles, filteredIncineratorHistory, filteredPowerData, filteredFlueGasHistory, rawWorkOrders, selectedShift, selectedDate, hasFilter]);
+  };
 
-  const dashboardData = computedDashboardData;
+  const filteredWorkOrders = useMemo(() => {
+    if (!hasFilter) return rawWorkOrders;
+    return rawWorkOrders.filter(w => matchFilter(getTimeField(w), selectedShift, selectedDate));
+  }, [rawWorkOrders, selectedShift, selectedDate, hasFilter, getTimeField]);
+
+  const filteredStats = useMemo(() => {
+    if (!rawDashboardData) return null;
+    if (!hasFilter) return baselineStats;
+    return calcFilteredStats(
+      filteredIncineratorHistory,
+      filteredFlueGasHistory,
+      filteredPowerData,
+      filteredChemicalData,
+      filteredVehicles,
+      filteredWorkOrders
+    );
+  }, [rawDashboardData, hasFilter, baselineStats, filteredIncineratorHistory, filteredFlueGasHistory,
+      filteredPowerData, filteredChemicalData, filteredVehicles, filteredWorkOrders]);
+
+  const calcDiff = (current: number | null | undefined, baseline: number | null | undefined) => {
+    if (current === null || current === undefined || baseline === null || baseline === undefined || baseline === 0) {
+      return null;
+    }
+    const diff = ((current - baseline) / baseline) * 100;
+    return {
+      value: Math.round(diff * 10) / 10,
+      isUp: diff >= 0,
+      abs: Math.round((current - baseline) * 100) / 100,
+    };
+  };
+
+  const dashboardData = useMemo(() => {
+    if (!filteredStats || !baselineStats || !rawDashboardData) return null;
+    const stats = hasFilter ? filteredStats : baselineStats;
+    return {
+      ...rawDashboardData,
+      incineratorLoad: stats.incineratorLoad ?? 0,
+      totalPowerGeneration: stats.totalPowerGeneration ?? 0,
+      emissionComplianceRate: stats.emissionComplianceRate ?? 0,
+      equipmentAvailability: stats.equipmentAvailability ?? rawDashboardData.equipmentAvailability,
+      todayVehicles: stats.todayVehicles ?? rawDashboardData.todayVehicles,
+      todayWasteWeight: stats.todayWasteWeight ?? rawDashboardData.todayWasteWeight,
+    };
+  }, [filteredStats, baselineStats, rawDashboardData, hasFilter]);
+
+  const dataAvailability = useMemo(() => ({
+    incinerator: filteredIncineratorHistory.length > 0,
+    flueGas: filteredFlueGasHistory.length > 0,
+    power: filteredPowerData.actual.length > 0,
+    chemical: filteredChemicalData.lime.length > 0,
+  }), [filteredIncineratorHistory, filteredFlueGasHistory, filteredPowerData, filteredChemicalData]);
 
   if (loading || !dashboardData) {
     return (
-      <div className="flex items-center justify-center h-[calc(100vh-120px)]">
-        <div className="text-center">
-          <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
-          <p className="text-slate-400">加载数据中...</p>
+      <>
+        <div className="flex items-center justify-center h-[calc(100vh-120px)]">
+          <div className="text-center">
+            <div className="w-12 h-12 border-4 border-blue-500/30 border-t-blue-500 rounded-full animate-spin mx-auto mb-4" />
+            <p className="text-slate-400">加载数据中...</p>
+          </div>
         </div>
-      </div>
+      </>
     );
   }
 
   return (
+    <>
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
@@ -223,11 +334,18 @@ export const DashboardPage: React.FC = () => {
       <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
         <MetricCard
           title="焚烧线负荷"
-          value={dashboardData.incineratorLoad}
+          value={dataAvailability.incinerator ? dashboardData.incineratorLoad : 0}
           unit="%"
           icon={Flame}
           color="amber"
           delay={100}
+          noData={hasFilter && !dataAvailability.incinerator}
+          trend={hasFilter && baselineStats && filteredStats
+            ? (() => {
+                const d = calcDiff(filteredStats.incineratorLoad, baselineStats.incineratorLoad);
+                return d ? { ...d, absUnit: '%', label: ' 较全量' } : undefined;
+              })()
+            : undefined}
         />
         <MetricCard
           title="总发电量"
@@ -236,15 +354,28 @@ export const DashboardPage: React.FC = () => {
           icon={Zap}
           color="blue"
           delay={200}
-          trend={{ value: 5.2, isUp: true }}
+          noData={hasFilter && !dataAvailability.power}
+          trend={hasFilter && baselineStats && filteredStats
+            ? (() => {
+                const d = calcDiff(filteredStats.totalPowerGeneration, baselineStats.totalPowerGeneration);
+                return d ? { ...d, absUnit: 'MWh', absDiff: Math.round(d.abs / 1000 * 10) / 10, label: ' 较全量' } : undefined;
+              })()
+            : undefined}
         />
         <MetricCard
           title="排放达标率"
-          value={dashboardData.emissionComplianceRate}
+          value={dataAvailability.flueGas ? dashboardData.emissionComplianceRate : 0}
           unit="%"
           icon={Leaf}
           color="green"
           delay={300}
+          noData={hasFilter && !dataAvailability.flueGas}
+          trend={hasFilter && baselineStats && filteredStats
+            ? (() => {
+                const d = calcDiff(filteredStats.emissionComplianceRate, baselineStats.emissionComplianceRate);
+                return d ? { ...d, absUnit: '%', label: ' 较全量' } : undefined;
+              })()
+            : undefined}
         />
         <MetricCard
           title="设备完好率"
@@ -253,6 +384,12 @@ export const DashboardPage: React.FC = () => {
           icon={Wrench}
           color="purple"
           delay={400}
+          trend={hasFilter && baselineStats && filteredStats
+            ? (() => {
+                const d = calcDiff(filteredStats.equipmentAvailability, baselineStats.equipmentAvailability);
+                return d ? { ...d, absUnit: '%', label: ' 较全量' } : undefined;
+              })()
+            : undefined}
         />
         <MetricCard
           title="入场车辆"
@@ -261,6 +398,12 @@ export const DashboardPage: React.FC = () => {
           icon={Truck}
           color="cyan"
           delay={500}
+          trend={hasFilter && baselineStats && filteredStats
+            ? (() => {
+                const d = calcDiff(filteredStats.todayVehicles, baselineStats.todayVehicles);
+                return d ? { ...d, absUnit: '辆', label: ' 较全量' } : undefined;
+              })()
+            : undefined}
         />
         <MetricCard
           title="接收垃圾"
@@ -269,6 +412,12 @@ export const DashboardPage: React.FC = () => {
           icon={Package}
           color="amber"
           delay={600}
+          trend={hasFilter && baselineStats && filteredStats
+            ? (() => {
+                const d = calcDiff(filteredStats.todayWasteWeight, baselineStats.todayWasteWeight);
+                return d ? { ...d, absUnit: '吨', label: ' 较全量' } : undefined;
+              })()
+            : undefined}
         />
       </div>
 
@@ -294,7 +443,58 @@ export const DashboardPage: React.FC = () => {
               { yAxis: 1000, label: '上限 1000°C', color: '#EF4444' },
               { yAxis: 850, label: '基准 850°C', color: '#10B981' },
             ]}
+            onPointClick={(idx) => setSelectedIncineratorPoint(
+              selectedIncineratorPoint?.index === idx ? null : filteredIncineratorHistory[idx]
+                ? { ...filteredIncineratorHistory[idx], index: idx }
+                : null
+            )}
+            selectedIndex={selectedIncineratorPoint?.index ?? null}
           />
+          {selectedIncineratorPoint && (
+            <div className="mt-4 p-4 bg-slate-900/60 rounded-xl border border-slate-700/50">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Thermometer className="w-4 h-4 text-orange-400" />
+                  <p className="text-sm font-medium text-white">
+                    时段明细：{selectedIncineratorPoint.time}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedIncineratorPoint(null)}
+                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[1, 2, 3].map(n => {
+                  const temp = selectedIncineratorPoint[`temp${n}`];
+                  const load = selectedIncineratorPoint[`load${n}`];
+                  const pressure = selectedIncineratorPoint[`pressure${n}`];
+                  const colors = ['text-red-400', 'text-amber-400', 'text-emerald-400'];
+                  return (
+                    <div key={n} className="p-3 bg-slate-800/50 rounded-lg">
+                      <p className={`text-sm font-medium mb-2 ${colors[n-1]}`}>{n}号炉</p>
+                      <div className="space-y-1">
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">温度</span>
+                          <span className="text-white font-mono">{temp?.toFixed(1)}°C</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">负荷</span>
+                          <span className="text-white font-mono">{load?.toFixed(1)}%</span>
+                        </div>
+                        <div className="flex justify-between text-xs">
+                          <span className="text-slate-500">压力</span>
+                          <span className="text-white font-mono">{pressure?.toFixed(2)}MPa</span>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-slate-800/30 backdrop-blur border border-slate-700/50 rounded-xl p-5">
@@ -350,7 +550,58 @@ export const DashboardPage: React.FC = () => {
             markLines={[
               { yAxis: emissionStandards.so2, label: 'SO2限值', color: '#10B981' },
             ]}
+            onPointClick={(idx) => setSelectedFlueGasPoint(
+              selectedFlueGasPoint?.index === idx ? null : filteredFlueGasHistory[idx]
+                ? { ...filteredFlueGasHistory[idx], index: idx }
+                : null
+            )}
+            selectedIndex={selectedFlueGasPoint?.index ?? null}
           />
+          {selectedFlueGasPoint && (
+            <div className="mt-4 p-4 bg-slate-900/60 rounded-xl border border-slate-700/50">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Wind className="w-4 h-4 text-blue-400" />
+                  <p className="text-sm font-medium text-white">
+                    排放明细：{selectedFlueGasPoint.time || selectedFlueGasPoint.timestamp?.split('T')?.[1] || selectedFlueGasPoint.index}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedFlueGasPoint(null)}
+                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                {[
+                  { name: 'SO2', val: selectedFlueGasPoint.so2, std: emissionStandards.so2, color: 'text-emerald-400' },
+                  { name: 'NOx', val: selectedFlueGasPoint.nox, std: emissionStandards.nox, color: 'text-amber-400' },
+                  { name: '粉尘', val: selectedFlueGasPoint.dust, std: emissionStandards.dust, color: 'text-blue-400' },
+                  { name: 'CO', val: selectedFlueGasPoint.co, std: emissionStandards.co, color: 'text-purple-400' },
+                  { name: 'HCl', val: selectedFlueGasPoint.hcl, std: emissionStandards.hcl, color: 'text-cyan-400' },
+                  { name: '达标', val: selectedFlueGasPoint.isStandard ? '是' : '否', std: null, color: selectedFlueGasPoint.isStandard ? 'text-emerald-400' : 'text-red-400' },
+                ].map(item => (
+                  <div key={item.name} className="p-3 bg-slate-800/50 rounded-lg">
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs text-slate-500">{item.name}</span>
+                      {item.std && (
+                        item.val > item.std
+                          ? <AlertTriangle className="w-3 h-3 text-red-400" />
+                          : <CheckCircle className="w-3 h-3 text-emerald-400" />
+                      )}
+                    </div>
+                    <p className={`text-lg font-mono font-bold ${item.color}`}>
+                      {item.std ? `${(item.val as number)?.toFixed(1)}` : item.val}
+                    </p>
+                    {item.std && (
+                      <p className="text-[10px] text-slate-500">限值 {item.std} mg/m³</p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="bg-slate-800/30 backdrop-blur border border-slate-700/50 rounded-xl p-5">
@@ -366,7 +617,49 @@ export const DashboardPage: React.FC = () => {
             ]}
             yAxisName="kWh"
             height={280}
+            onPointClick={(idx, info) => setSelectedPowerIdx(selectedPowerIdx === idx ? null : idx)}
+            selectedIndex={selectedPowerIdx}
           />
+          {selectedPowerIdx !== null && (
+            <div className="mt-4 p-4 bg-slate-900/60 rounded-xl border border-slate-700/50">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  <Zap className="w-4 h-4 text-blue-400" />
+                  <p className="text-sm font-medium text-white">
+                    发电汇总：{filteredPowerData.hours[selectedPowerIdx]}
+                  </p>
+                </div>
+                <button
+                  onClick={() => setSelectedPowerIdx(null)}
+                  className="p-1 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="p-3 bg-slate-800/50 rounded-lg">
+                  <p className="text-xs text-slate-500 mb-1">实际发电量</p>
+                  <p className="text-lg font-mono font-bold text-blue-400">
+                    {formatNumber(filteredPowerData.actual[selectedPowerIdx] / 1000, 2)} MWh
+                  </p>
+                  <p className="text-[10px] text-slate-500">目标: {formatNumber(filteredPowerData.target[selectedPowerIdx] / 1000, 2)} MWh</p>
+                </div>
+                <div className="p-3 bg-slate-800/50 rounded-lg">
+                  <p className="text-xs text-slate-500 mb-1">完成率</p>
+                  <p className={`text-lg font-mono font-bold ${
+                    filteredPowerData.actual[selectedPowerIdx] >= filteredPowerData.target[selectedPowerIdx]
+                      ? 'text-emerald-400' : 'text-amber-400'
+                  }`}>
+                    {Math.round((filteredPowerData.actual[selectedPowerIdx] / filteredPowerData.target[selectedPowerIdx]) * 100)}%
+                  </p>
+                  <p className="text-[10px] text-slate-500">
+                    {filteredPowerData.actual[selectedPowerIdx] >= filteredPowerData.target[selectedPowerIdx]
+                      ? '超额完成' : '未达目标'}
+                  </p>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       </div>
 
@@ -428,7 +721,47 @@ export const DashboardPage: React.FC = () => {
           ]}
           yAxisName="吨/日"
           height={250}
+          onPointClick={(idx) => setSelectedChemicalIdx(selectedChemicalIdx === idx ? null : idx)}
+          selectedIndex={selectedChemicalIdx}
         />
+        {selectedChemicalIdx !== null && (
+          <div className="mt-4 p-4 bg-slate-900/60 rounded-xl border border-slate-700/50">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <Droplet className="w-4 h-4 text-cyan-400" />
+                <p className="text-sm font-medium text-white">
+                  药剂汇总：{filteredChemicalData.days[selectedChemicalIdx]}
+                </p>
+              </div>
+              <button
+                onClick={() => setSelectedChemicalIdx(null)}
+                className="p-1 text-slate-400 hover:text-white hover:bg-slate-700 rounded transition-colors"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="p-3 bg-slate-800/50 rounded-lg">
+                <p className="text-xs text-slate-500 mb-1">石灰消耗</p>
+                <p className="text-lg font-mono font-bold text-blue-400">
+                  {formatNumber(filteredChemicalData.lime[selectedChemicalIdx], 2)} 吨
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  周期累计: {formatNumber(filteredChemicalData.lime.slice(0, selectedChemicalIdx + 1).reduce((a, b) => a + b, 0), 2)} 吨
+                </p>
+              </div>
+              <div className="p-3 bg-slate-800/50 rounded-lg">
+                <p className="text-xs text-slate-500 mb-1">活性炭消耗</p>
+                <p className="text-lg font-mono font-bold text-emerald-400">
+                  {formatNumber(filteredChemicalData.activatedCarbon[selectedChemicalIdx], 2)} 吨
+                </p>
+                <p className="text-[10px] text-slate-500">
+                  周期累计: {formatNumber(filteredChemicalData.activatedCarbon.slice(0, selectedChemicalIdx + 1).reduce((a, b) => a + b, 0), 2)} 吨
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {flueGas && (
@@ -460,5 +793,6 @@ export const DashboardPage: React.FC = () => {
         </div>
       )}
     </div>
+    </>
   );
 };

@@ -165,15 +165,44 @@ export const generateMonthlyReport = async (
         formatDateTime(w.createTime)
       ].map(escapeCSV).join(','));
     });
+
+    const summary = {
+      type: 'monthly',
+      month,
+      filterInfo,
+      keyMetrics: {
+        vehicleCount: vehicles.length,
+        wasteWeight: vehicles.reduce((s, v) => s + (v.weight || 0), 0),
+        incineratorCount: incinerators.length,
+        workOrderCount: workOrders.length,
+        completedOrders: workOrders.filter(w => w.status === 'completed').length,
+        chemicalCount: chemicals.length,
+      },
+      records: {
+        vehicles: vehicles.length,
+        incineratorHistory: incinerators.length,
+        workOrders: workOrders.length,
+      }
+    };
+
+    return {
+      csvContent: lines.join('\n'),
+      summary
+    };
   } catch (error) {
     console.error('Error fetching report data:', error);
     lines.push('数据获取异常');
+    return {
+      csvContent: lines.join('\n'),
+      summary: {
+        type: 'monthly',
+        month,
+        filterInfo,
+        keyMetrics: {},
+        records: {}
+      }
+    };
   }
-
-  return {
-    csvContent: lines.join('\n'),
-    summary: {}
-  };
 };
 
 export const generateComplianceReport = async (
@@ -190,6 +219,17 @@ export const generateComplianceReport = async (
   lines.push(`筛选班次,${filterInfo.shift}`);
   lines.push(`筛选日期,${filterInfo.date}`);
   lines.push('');
+
+  let summary: any = {
+    type: 'compliance',
+    month,
+    filterInfo,
+    keyMetrics: {},
+    exceedRecords: [],
+    envAlertsCount: 0,
+    conclusion: '',
+    records: {},
+  };
 
   try {
     const allFlueGasList = await api.getFlueGasHistory();
@@ -228,6 +268,25 @@ export const generateComplianceReport = async (
       : 100;
 
     const envAlerts = alerts.filter(a => a.type === 'emission');
+
+    summary = {
+      ...summary,
+      keyMetrics: {
+        flueGasTests: flueGasList.length,
+        exceedCount: exceedRecords.length,
+        complianceRate: formatNumber(Math.min(complianceRate, 100), 2),
+        envAlerts: envAlerts.length,
+        leachateTests: leachateList.length,
+      },
+      exceedRecords: exceedRecords.slice(0, 10),
+      envAlertsCount: envAlerts.length,
+      conclusion: exceedRecords.length === 0 ? '本周期内各项环保指标全部达标，运营合规' : `本周期内共发现${exceedRecords.length}条超标记录，需重点关注整改`,
+      records: {
+        flueGasList: flueGasList.length,
+        envAlerts: envAlerts.length,
+        leachateList: leachateList.length,
+      }
+    };
 
     lines.push('=== 一、环保达标总体情况 ===');
     lines.push('指标名称,数值');
@@ -318,6 +377,6 @@ export const generateComplianceReport = async (
 
   return {
     csvContent: lines.join('\n'),
-    summary: {}
+    summary
   };
 };

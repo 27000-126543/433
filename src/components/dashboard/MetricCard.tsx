@@ -1,5 +1,5 @@
 import React from 'react';
-import { LucideIcon, TrendingUp, TrendingDown } from 'lucide-react';
+import { LucideIcon, TrendingUp, TrendingDown, Minus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 interface MetricCardProps {
@@ -10,7 +10,11 @@ interface MetricCardProps {
   trend?: {
     value: number;
     isUp: boolean;
+    label?: string;
+    absDiff?: number;
+    absUnit?: string;
   };
+  noData?: boolean;
   color?: 'blue' | 'green' | 'amber' | 'red' | 'purple' | 'cyan';
   delay?: number;
 }
@@ -30,9 +34,13 @@ export const MetricCard: React.FC<MetricCardProps> = ({
   unit,
   icon: Icon,
   trend,
+  noData = false,
   color = 'blue',
   delay = 0,
 }) => {
+  const displayValue = noData ? '暂无数据' : value;
+  const displayUnit = noData ? '' : unit;
+
   return (
     <div
       className={cn(
@@ -44,25 +52,45 @@ export const MetricCard: React.FC<MetricCardProps> = ({
       <div className="absolute inset-0 rounded-xl bg-gradient-to-r from-white/5 to-transparent opacity-0 hover:opacity-100 transition-opacity" />
       
       <div className="relative flex items-start justify-between">
-        <div>
-          <p className="text-xs text-slate-400 font-medium mb-1">{title}</p>
+        <div className="min-w-0 flex-1">
+          <p className="text-xs text-slate-400 font-medium mb-1 truncate">{title}</p>
           <div className="flex items-baseline gap-1">
-            <span className="text-3xl font-bold font-mono tracking-tight">{value}</span>
-            {unit && <span className="text-sm text-slate-400">{unit}</span>}
+            <span className={cn(
+              'font-bold font-mono tracking-tight',
+              noData ? 'text-lg text-slate-500' : 'text-3xl'
+            )}>
+              {displayValue}
+            </span>
+            {displayUnit && <span className="text-sm text-slate-400">{displayUnit}</span>}
           </div>
-          {trend && (
+          {trend && !noData && (
             <div className={cn(
               'flex items-center gap-1 mt-2 text-xs',
+              trend.value === 0 ? 'text-slate-400' :
               trend.isUp ? 'text-emerald-400' : 'text-red-400'
             )}>
-              {trend.isUp ? <TrendingUp className="w-3 h-3" /> : <TrendingDown className="w-3 h-3" />}
-              <span>{trend.value}% 较昨日</span>
+              {trend.value === 0 ? (
+                <Minus className="w-3 h-3" />
+              ) : trend.isUp ? (
+                <TrendingUp className="w-3 h-3" />
+              ) : (
+                <TrendingDown className="w-3 h-3" />
+              )}
+              <span>
+                {trend.value === 0 ? '持平' : `${Math.abs(trend.value)}%`}
+                {trend.absDiff !== undefined && (
+                  <span className="ml-1 opacity-70">
+                    ({trend.absDiff >= 0 ? '+' : ''}{trend.absDiff}{trend.absUnit || ''})
+                  </span>
+                )}
+                {trend.label || ' 较全量'}
+              </span>
             </div>
           )}
         </div>
         
         <div className={cn(
-          'p-3 rounded-xl bg-gradient-to-br',
+          'p-3 rounded-xl bg-gradient-to-br flex-shrink-0',
           `from-${color}-500/30 to-${color}-500/10`
         )}>
           <Icon className="w-6 h-6" />
