@@ -22,13 +22,21 @@ export const mockFlueGasHistory = (count: number = 60) => {
   for (let i = count - 1; i >= 0; i--) {
     const time = new Date(now.getTime() - i * 5000);
     const hasExceed = Math.random() < 0.03;
+    const so2 = hasExceed ? 115 : 35 + Math.random() * 35;
+    const nox = hasExceed ? 320 : 160 + Math.random() * 90;
+    const dust = hasExceed ? 35 : 6 + Math.random() * 12;
+    const co = hasExceed ? 110 : 25 + Math.random() * 45;
+    const hcl = hasExceed ? 65 : 22 + Math.random() * 28;
+    const isStandard = !hasExceed;
     data.push({
       time: format(time, 'HH:mm:ss'),
-      so2: hasExceed ? 115 : 35 + Math.random() * 35,
-      nox: hasExceed ? 320 : 160 + Math.random() * 90,
-      dust: hasExceed ? 35 : 6 + Math.random() * 12,
-      co: hasExceed ? 110 : 25 + Math.random() * 45,
-      hcl: hasExceed ? 65 : 22 + Math.random() * 28,
+      timestamp: format(time, 'yyyy-MM-dd\'T\'HH:mm:ss'),
+      so2,
+      nox,
+      dust,
+      co,
+      hcl,
+      isStandard,
     });
   }
   return data;

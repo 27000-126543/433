@@ -5,16 +5,16 @@ import { useAuth } from '@/context/AuthContext';
 import { roleNames } from '@/types';
 
 const demoAccounts = [
-  { username: 'admin', role: 'director', name: '张厂长' },
-  { username: 'operator1', role: 'operator', name: '李值长' },
-  { username: 'gatekeeper1', role: 'gatekeeper', name: '王值班' },
-  { username: 'maintenance1', role: 'maintenance', name: '赵维修' },
-  { username: 'safety1', role: 'safety', name: '刘安环' },
-  { username: 'finance1', role: 'finance', name: '陈财务' },
+  { username: 'director', role: 'director', name: '张厂长' },
+  { username: 'operator', role: 'operator', name: '李值长' },
+  { username: 'gatekeeper', role: 'gatekeeper', name: '王值班' },
+  { username: 'maintenance', role: 'maintenance', name: '赵维修' },
+  { username: 'safety', role: 'safety', name: '刘安环' },
+  { username: 'finance', role: 'finance', name: '陈财务' },
 ];
 
 export const LoginPage: React.FC = () => {
-  const [username, setUsername] = useState('admin');
+  const [username, setUsername] = useState('director');
   const [password, setPassword] = useState('123456');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState('');

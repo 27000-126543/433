@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   Flame,
   Zap,
@@ -16,36 +16,44 @@ import { BarChart } from '@/components/charts/BarChart';
 import { GaugeChart } from '@/components/charts/GaugeChart';
 import { useAlert } from '@/context/AlertContext';
 import { useRealtimeData } from '@/hooks/useRealtimeData';
+import { useFilter, matchFilter } from '@/context/FilterContext';
 import { api } from '@/mock/api';
 import { DashboardData } from '@/types';
 import { formatNumber } from '@/utils/format';
 import { emissionStandards } from '@/mock/data/flueGas';
 
 export const DashboardPage: React.FC = () => {
-  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null);
-  const [incineratorHistory, setIncineratorHistory] = useState<any[]>([]);
-  const [flueGasHistory, setFlueGasHistory] = useState<any[]>([]);
-  const [powerData, setPowerData] = useState<{ hours: string[]; actual: number[]; target: number[] }>({ hours: [], actual: [], target: [] });
-  const [chemicalData, setChemicalData] = useState<{ days: string[]; lime: number[]; activatedCarbon: number[] }>({ days: [], lime: [], activatedCarbon: [] });
+  const [rawDashboardData, setRawDashboardData] = useState<DashboardData | null>(null);
+  const [rawIncineratorHistory, setRawIncineratorHistory] = useState<any[]>([]);
+  const [rawFlueGasHistory, setRawFlueGasHistory] = useState<any[]>([]);
+  const [rawPowerData, setRawPowerData] = useState<{ hours: string[]; actual: number[]; target: number[]; timestamps: string[] }>({ hours: [], actual: [], target: [], timestamps: [] });
+  const [rawChemicalData, setRawChemicalData] = useState<{ days: string[]; lime: number[]; activatedCarbon: number[]; timestamps: string[] }>({ days: [], lime: [], activatedCarbon: [], timestamps: [] });
+  const [rawVehicles, setRawVehicles] = useState<any[]>([]);
+  const [rawWorkOrders, setRawWorkOrders] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const { alerts } = useAlert();
   const { incinerators, flueGas, isConnected } = useRealtimeData(true);
+  const { selectedShift, selectedDate } = useFilter();
 
   useEffect(() => {
     const loadData = async () => {
       try {
-        const [dashboard, history, flueGasHist, power, chemical] = await Promise.all([
+        const [dashboard, history, flueGasHist, power, chemical, vehicles, workOrders] = await Promise.all([
           api.getDashboardData(),
           api.getIncineratorHistory(),
           api.getFlueGasHistory(),
           api.getPowerGeneration(),
           api.getChemicalConsumption(),
+          api.getVehicles(),
+          api.getWorkOrders(),
         ]);
-        setDashboardData(dashboard);
-        setIncineratorHistory(history);
-        setFlueGasHistory(flueGasHist);
-        setPowerData(power);
-        setChemicalData(chemical);
+        setRawDashboardData(dashboard);
+        setRawIncineratorHistory(history);
+        setRawFlueGasHistory(flueGasHist);
+        setRawPowerData(power);
+        setRawChemicalData(chemical);
+        setRawVehicles(vehicles);
+        setRawWorkOrders(workOrders);
       } catch (error) {
         console.error('Failed to load dashboard data:', error);
       } finally {
@@ -54,6 +62,117 @@ export const DashboardPage: React.FC = () => {
     };
     loadData();
   }, []);
+
+  const filterLabel = useMemo(() => {
+    const parts: string[] = [];
+    if (selectedShift !== 'all') parts.push(selectedShift === 'day' ? '白班' : '夜班');
+    if (selectedDate) parts.push(selectedDate);
+    return parts.length > 0 ? parts.join(' · ') : '全量数据';
+  }, [selectedShift, selectedDate]);
+
+  const filteredIncineratorHistory = useMemo(() => {
+    if (selectedShift === 'all' && !selectedDate) return rawIncineratorHistory;
+    return rawIncineratorHistory.filter(item => matchFilter(item.time || item.timestamp || '', selectedShift, selectedDate));
+  }, [rawIncineratorHistory, selectedShift, selectedDate]);
+
+  const filteredFlueGasHistory = useMemo(() => {
+    if (selectedShift === 'all' && !selectedDate) return rawFlueGasHistory;
+    return rawFlueGasHistory.filter(item => matchFilter(item.time || item.timestamp || '', selectedShift, selectedDate));
+  }, [rawFlueGasHistory, selectedShift, selectedDate]);
+
+  const filteredPowerData = useMemo(() => {
+    if (selectedShift === 'all' && !selectedDate) return rawPowerData;
+    const timestamps = rawPowerData.timestamps || [];
+    const indices: number[] = [];
+    timestamps.forEach((ts, idx) => {
+      if (matchFilter(ts, selectedShift, selectedDate)) {
+        indices.push(idx);
+      }
+    });
+    return {
+      hours: indices.map(i => rawPowerData.hours[i]),
+      actual: indices.map(i => rawPowerData.actual[i]),
+      target: indices.map(i => rawPowerData.target[i]),
+      timestamps: indices.map(i => timestamps[i]),
+    };
+  }, [rawPowerData, selectedShift, selectedDate]);
+
+  const filteredChemicalData = useMemo(() => {
+    if (selectedShift === 'all' && !selectedDate) return rawChemicalData;
+    const timestamps = rawChemicalData.timestamps || [];
+    const indices: number[] = [];
+    timestamps.forEach((ts, idx) => {
+      if (matchFilter(ts, selectedShift, selectedDate)) {
+        indices.push(idx);
+      }
+    });
+    return {
+      days: indices.map(i => rawChemicalData.days[i]),
+      lime: indices.map(i => rawChemicalData.lime[i]),
+      activatedCarbon: indices.map(i => rawChemicalData.activatedCarbon[i]),
+      timestamps: indices.map(i => timestamps[i]),
+    };
+  }, [rawChemicalData, selectedShift, selectedDate]);
+
+  const filteredVehicles = useMemo(() => {
+    if (selectedShift === 'all' && !selectedDate) return rawVehicles;
+    return rawVehicles.filter(v => matchFilter(v.arrivalTime || '', selectedShift, selectedDate));
+  }, [rawVehicles, selectedShift, selectedDate]);
+
+  const computedDashboardData = useMemo(() => {
+    if (!rawDashboardData) return null;
+    const isFiltered = selectedShift !== 'all' || selectedDate;
+    
+    let todayVehicles = rawDashboardData.todayVehicles;
+    let todayWasteWeight = rawDashboardData.todayWasteWeight;
+    let incineratorLoad = rawDashboardData.incineratorLoad;
+    let equipmentAvailability = rawDashboardData.equipmentAvailability;
+    let emissionComplianceRate = rawDashboardData.emissionComplianceRate;
+    let totalPowerGeneration = rawDashboardData.totalPowerGeneration;
+
+    if (isFiltered) {
+      todayVehicles = filteredVehicles.length;
+      todayWasteWeight = filteredVehicles.reduce((sum, v) => sum + (v.weight || 0), 0);
+      todayWasteWeight = Math.round(todayWasteWeight);
+      
+      if (filteredIncineratorHistory.length > 0) {
+        const loads = filteredIncineratorHistory.map(i => (i.load1 + i.load2 + i.load3) / 3 || i.load || 0);
+        incineratorLoad = Math.round(loads.reduce((a, b) => a + b, 0) / loads.length);
+      }
+      
+      if (filteredPowerData.actual.length > 0) {
+        totalPowerGeneration = filteredPowerData.actual.reduce((a, b) => a + b, 0);
+      }
+      
+      if (filteredFlueGasHistory.length > 0) {
+        const compliant = filteredFlueGasHistory.filter(f => f.isStandard).length;
+        emissionComplianceRate = Math.round((compliant / filteredFlueGasHistory.length) * 1000) / 10;
+      }
+      
+      if (rawWorkOrders.length > 0) {
+        const relevant = selectedDate 
+          ? rawWorkOrders.filter(w => matchFilter(w.createTime || '', selectedShift, selectedDate))
+          : rawWorkOrders;
+        const completed = relevant.filter(w => w.status === 'completed').length;
+        if (relevant.length > 0) {
+          equipmentAvailability = Math.round((completed / relevant.length) * 1000) / 10;
+          equipmentAvailability = Math.max(85, Math.min(100, equipmentAvailability));
+        }
+      }
+    }
+
+    return {
+      ...rawDashboardData,
+      incineratorLoad,
+      totalPowerGeneration,
+      emissionComplianceRate,
+      equipmentAvailability,
+      todayVehicles,
+      todayWasteWeight,
+    };
+  }, [rawDashboardData, filteredVehicles, filteredIncineratorHistory, filteredPowerData, filteredFlueGasHistory, rawWorkOrders, selectedShift, selectedDate]);
+
+  const dashboardData = computedDashboardData;
 
   if (loading || !dashboardData) {
     return (
@@ -71,7 +190,12 @@ export const DashboardPage: React.FC = () => {
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-white">运营总览</h1>
-          <p className="text-sm text-slate-400 mt-1">实时监控全厂运营状态</p>
+          <div className="flex items-center gap-3 mt-1">
+            <p className="text-sm text-slate-400">实时监控全厂运营状态</p>
+            <span className="text-xs px-2 py-0.5 bg-blue-500/20 text-blue-400 rounded">
+              {filterLabel}
+            </span>
+          </div>
         </div>
         <div className="flex items-center gap-2">
           <span className={`inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs ${isConnected ? 'bg-emerald-500/20 text-emerald-400' : 'bg-red-500/20 text-red-400'}`}>
@@ -118,7 +242,7 @@ export const DashboardPage: React.FC = () => {
           delay={400}
         />
         <MetricCard
-          title="今日入场车辆"
+          title="入场车辆"
           value={dashboardData.todayVehicles}
           unit="辆"
           icon={Truck}
@@ -126,7 +250,7 @@ export const DashboardPage: React.FC = () => {
           delay={500}
         />
         <MetricCard
-          title="今日接收垃圾"
+          title="接收垃圾"
           value={dashboardData.todayWasteWeight}
           unit="吨"
           icon={Package}
@@ -141,11 +265,11 @@ export const DashboardPage: React.FC = () => {
             <h3 className="text-base font-semibold text-white">焚烧炉温度趋势</h3>
             <div className="flex items-center gap-2 text-xs text-slate-400">
               <Activity className="w-4 h-4" />
-              最近5分钟
+              {filteredIncineratorHistory.length > 0 ? `${filteredIncineratorHistory.length} 条记录` : '暂无数据'}
             </div>
           </div>
           <LineChart
-            data={incineratorHistory}
+            data={filteredIncineratorHistory}
             series={[
               { key: 'temp1', name: '1号炉温度', color: '#EF4444' },
               { key: 'temp2', name: '2号炉温度', color: '#F59E0B' },
@@ -197,9 +321,12 @@ export const DashboardPage: React.FC = () => {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="bg-slate-800/30 backdrop-blur border border-slate-700/50 rounded-xl p-5">
-          <h3 className="text-base font-semibold text-white mb-4">烟气排放趋势</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold text-white">烟气排放趋势</h3>
+            <span className="text-xs text-slate-400">{filteredFlueGasHistory.length} 条记录</span>
+          </div>
           <LineChart
-            data={flueGasHistory}
+            data={filteredFlueGasHistory}
             series={[
               { key: 'so2', name: 'SO2', color: '#10B981' },
               { key: 'nox', name: 'NOx', color: '#F59E0B' },
@@ -214,12 +341,15 @@ export const DashboardPage: React.FC = () => {
         </div>
 
         <div className="bg-slate-800/30 backdrop-blur border border-slate-700/50 rounded-xl p-5">
-          <h3 className="text-base font-semibold text-white mb-4">发电量对比</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-base font-semibold text-white">发电量对比</h3>
+            <span className="text-xs text-slate-400">{filteredPowerData.hours.length} 个时段</span>
+          </div>
           <BarChart
-            xData={powerData.hours}
+            xData={filteredPowerData.hours}
             series={[
-              { name: '实际发电量', data: powerData.actual, color: '#0EA5E9' },
-              { name: '目标发电量', data: powerData.target, color: '#F59E0B', type: 'line' },
+              { name: '实际发电量', data: filteredPowerData.actual, color: '#0EA5E9' },
+              { name: '目标发电量', data: filteredPowerData.target, color: '#F59E0B', type: 'line' },
             ]}
             yAxisName="kWh"
             height={280}
@@ -269,12 +399,15 @@ export const DashboardPage: React.FC = () => {
       </div>
 
       <div className="bg-slate-800/30 backdrop-blur border border-slate-700/50 rounded-xl p-5">
-        <h3 className="text-base font-semibold text-white mb-4">药剂消耗趋势</h3>
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-base font-semibold text-white">药剂消耗趋势</h3>
+          <span className="text-xs text-slate-400">{filteredChemicalData.days.length} 天数据</span>
+        </div>
         <LineChart
-          data={chemicalData.days.map((day, idx) => ({
+          data={filteredChemicalData.days.map((day, idx) => ({
             time: day,
-            lime: chemicalData.lime[idx],
-            carbon: chemicalData.activatedCarbon[idx],
+            lime: filteredChemicalData.lime[idx],
+            carbon: filteredChemicalData.activatedCarbon[idx],
           }))}
           series={[
             { key: 'lime', name: '石灰', color: '#0EA5E9' },

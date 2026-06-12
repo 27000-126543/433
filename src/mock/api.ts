@@ -228,4 +228,40 @@ export const api = {
       data: `This is ${type} report data for ${params.period}`,
     };
   },
+
+  getVehicles: async (): Promise<VehicleRecord[]> => {
+    await delay(300);
+    return [...mockVehicles];
+  },
+
+  getIncinerators: async (): Promise<IncineratorData[]> => {
+    await delay(200);
+    return generateIncineratorData();
+  },
+
+  getChemicals: async (): Promise<ChemicalInventory[]> => {
+    await delay(300);
+    return [...mockChemicals];
+  },
+
+  getEquipmentList: async () => {
+    await delay(200);
+    return [
+      { id: 'EQ-001', name: '1号焚烧炉', location: '主厂房A区', status: 'running' },
+      { id: 'EQ-002', name: '2号焚烧炉', location: '主厂房A区', status: 'running' },
+      { id: 'EQ-003', name: '3号焚烧炉', location: '主厂房B区', status: 'maintenance' },
+      { id: 'EQ-004', name: '余热锅炉A', location: '主厂房A区', status: 'running' },
+      { id: 'EQ-005', name: '余热锅炉B', location: '主厂房B区', status: 'running' },
+      { id: 'EQ-006', name: '烟气净化塔1号', location: '烟气处理区', status: 'running' },
+      { id: 'EQ-007', name: '烟气净化塔2号', location: '烟气处理区', status: 'running' },
+      { id: 'EQ-008', name: '布袋除尘器', location: '烟气处理区', status: 'running' },
+      { id: 'EQ-009', name: '引风机A', location: '主厂房A区', status: 'running' },
+      { id: 'EQ-010', name: '引风机B', location: '主厂房B区', status: 'warning' },
+      { id: 'EQ-011', name: '渗滤液处理泵1', location: '渗滤液处理站', status: 'running' },
+      { id: 'EQ-012', name: '渗滤液处理泵2', location: '渗滤液处理站', status: 'standby' },
+      { id: 'EQ-013', name: '炉渣分选机', location: '炉渣处理区', status: 'running' },
+      { id: 'EQ-014', name: '起重机1号', location: '垃圾池', status: 'running' },
+      { id: 'EQ-015', name: '起重机2号', location: '垃圾池', status: 'running' },
+    ];
+  },
 };

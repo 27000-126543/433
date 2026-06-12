@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Plus, Clock, CheckCircle, Wrench, Search, Filter, QrCode, AlertCircle, ArrowUpCircle, User } from 'lucide-react';
+import { AlertTriangle, Plus, Clock, CheckCircle, Wrench, Search, Filter, QrCode, AlertCircle, ArrowUpCircle, User, Camera, MapPin, X } from 'lucide-react';
 import { DataTable } from '@/components/common/DataTable';
 import { StatusBadge } from '@/components/common/StatusBadge';
 import { usePermission } from '@/hooks/usePermission';
@@ -7,6 +7,18 @@ import { useAuth } from '@/context/AuthContext';
 import { api } from '@/mock/api';
 import { formatDateTime, getPriorityColor, getPriorityText, getWorkOrderTypeText } from '@/utils/format';
 import { WorkOrder } from '@/types';
+
+const maintenanceTeams = [
+  { priority: 'urgent', team: '紧急维修班组', leader: '张班长' },
+  { priority: 'high', team: '一班维修组', leader: '李组长' },
+  { priority: 'medium', team: '二班维修组', leader: '王组长' },
+  { priority: 'low', team: '三班维修组', leader: '赵组长' },
+];
+
+const getAssignee = (priority: string): string => {
+  const team = maintenanceTeams.find(t => t.priority === priority);
+  return team ? `${team.team} - ${team.leader}` : '待分配';
+};
 
 export const EquipmentPage: React.FC = () => {
   const { user } = useAuth();
@@ -17,6 +29,10 @@ export const EquipmentPage: React.FC = () => {
   const [priorityFilter, setPriorityFilter] = useState<string>('all');
   const [searchText, setSearchText] = useState('');
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [showScanModal, setShowScanModal] = useState(false);
+  const [equipmentList, setEquipmentList] = useState<any[]>([]);
+  const [selectedEquipment, setSelectedEquipment] = useState<any>(null);
+  const [scanStep, setScanStep] = useState<'scanning' | 'result' | 'report'>('scanning');
   const [newOrder, setNewOrder] = useState({
     equipmentName: '',
     type: 'repair' as WorkOrder['type'],
@@ -26,15 +42,71 @@ export const EquipmentPage: React.FC = () => {
 
   useEffect(() => {
     const loadData = async () => {
-      const [orders, status] = await Promise.all([
+      const [orders, status, equipment] = await Promise.all([
         api.getWorkOrders(),
         api.getEquipmentStatus(),
+        api.getEquipmentList(),
       ]);
       setWorkOrders(orders);
       setEquipmentStatus(status);
+      setEquipmentList(equipment);
     };
     loadData();
   }, []);
+
+  const handleOpenScan = () => {
+    setScanStep('scanning');
+    setSelectedEquipment(null);
+    setShowScanModal(true);
+  };
+
+  const handleSimulateScan = () => {
+    const randomIdx = Math.floor(Math.random() * equipmentList.length);
+    setSelectedEquipment(equipmentList[randomIdx]);
+    setScanStep('result');
+  };
+
+  const handleSelectEquipment = (eq: any) => {
+    setSelectedEquipment(eq);
+    setScanStep('result');
+  };
+
+  const handleGoToReport = () => {
+    setNewOrder({
+      equipmentName: selectedEquipment.name,
+      type: 'repair',
+      priority: selectedEquipment.status === 'warning' ? 'high' : selectedEquipment.status === 'maintenance' ? 'medium' : 'medium',
+      description: '',
+    });
+    setScanStep('report');
+  };
+
+  const handleSubmitScanOrder = async () => {
+    if (!newOrder.description.trim()) {
+      alert('请填写故障描述');
+      return;
+    }
+    if (!user) return;
+
+    const assignee = getAssignee(newOrder.priority);
+    const result = await api.createWorkOrder({
+      equipmentId: selectedEquipment?.id || `eq-${Date.now()}`,
+      equipmentName: newOrder.equipmentName,
+      type: newOrder.type,
+      priority: newOrder.priority,
+      description: newOrder.description,
+      reporter: user.name,
+      assignee,
+      createTime: new Date().toISOString(),
+    });
+    if (result) {
+      setWorkOrders((prev) => [result, ...prev]);
+      setShowScanModal(false);
+      setNewOrder({ equipmentName: '', type: 'repair', priority: 'medium', description: '' });
+      setSelectedEquipment(null);
+      alert(`工单创建成功！已自动分派给${assignee}`);
+    }
+  };
 
   const filteredOrders = workOrders.filter((order) => {
     if (statusFilter !== 'all' && order.status !== statusFilter) return false;
@@ -220,7 +292,10 @@ export const EquipmentPage: React.FC = () => {
               报修工单
             </button>
           )}
-          <button className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors flex items-center gap-2">
+          <button
+            onClick={handleOpenScan}
+            className="px-4 py-2 bg-slate-700 hover:bg-slate-600 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
+          >
             <QrCode className="w-4 h-4" />
             扫码巡检
           </button>
@@ -398,6 +473,189 @@ export const EquipmentPage: React.FC = () => {
                 提交工单
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {showScanModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg max-h-[85vh] overflow-hidden flex flex-col">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">
+                {scanStep === 'scanning' && '扫码巡检'}
+                {scanStep === 'result' && '设备信息'}
+                {scanStep === 'report' && '故障报修'}
+              </h3>
+              <button
+                onClick={() => setShowScanModal(false)}
+                className="p-1 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {scanStep === 'scanning' && (
+              <div className="flex-1 flex flex-col items-center justify-center py-8">
+                <div className="relative w-48 h-48 mb-6">
+                  <div className="absolute inset-0 border-2 border-dashed border-slate-600 rounded-2xl" />
+                  <div className="absolute inset-2 border border-blue-500/30 rounded-xl" />
+                  <div className="absolute inset-0 flex items-center justify-center">
+                    <QrCode className="w-24 h-24 text-slate-600" />
+                  </div>
+                  <div className="absolute left-2 right-2 top-4 h-0.5 bg-gradient-to-r from-transparent via-blue-400 to-transparent animate-pulse" />
+                </div>
+                <p className="text-slate-400 mb-6">将二维码对准扫描框</p>
+                <div className="space-y-3 w-full">
+                  <button
+                    onClick={handleSimulateScan}
+                    className="w-full py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <Camera className="w-4 h-4" />
+                    模拟扫码
+                  </button>
+                  <p className="text-center text-xs text-slate-500">或从设备列表选择</p>
+                  <div className="max-h-40 overflow-y-auto space-y-1">
+                    {equipmentList.map((eq) => (
+                      <button
+                        key={eq.id}
+                        onClick={() => handleSelectEquipment(eq)}
+                        className="w-full p-2 text-left bg-slate-700/50 hover:bg-slate-700 rounded-lg text-sm text-slate-300 transition-colors flex items-center gap-2"
+                      >
+                        <Wrench className="w-4 h-4 text-slate-500" />
+                        <span>{eq.name}</span>
+                        <span className="ml-auto text-xs text-slate-500">{eq.id}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {scanStep === 'result' && selectedEquipment && (
+              <div className="flex-1 overflow-y-auto">
+                <div className="bg-slate-900/50 rounded-xl p-4 mb-4">
+                  <div className="flex items-start gap-3 mb-3">
+                    <div className="p-3 bg-blue-500/20 rounded-lg">
+                      <Wrench className="w-6 h-6 text-blue-400" />
+                    </div>
+                    <div className="flex-1">
+                      <h4 className="text-white font-medium">{selectedEquipment.name}</h4>
+                      <p className="text-xs text-slate-500 mt-1">设备编号：{selectedEquipment.id}</p>
+                    </div>
+                    <StatusBadge
+                      status={selectedEquipment.status === 'running' ? 'normal' : selectedEquipment.status === 'warning' ? 'warning' : selectedEquipment.status === 'maintenance' ? 'alarm' : 'normal'}
+                      text={selectedEquipment.status === 'running' ? '运行中' : selectedEquipment.status === 'warning' ? '异常' : selectedEquipment.status === 'maintenance' ? '维护中' : '待机'}
+                    />
+                  </div>
+                  <div className="flex items-center gap-2 text-sm text-slate-400">
+                    <MapPin className="w-4 h-4" />
+                    <span>{selectedEquipment.location}</span>
+                  </div>
+                </div>
+
+                <div className="space-y-3 mb-6">
+                  <div className="flex items-center justify-between p-3 bg-slate-900/30 rounded-lg">
+                    <span className="text-sm text-slate-400">上次巡检</span>
+                    <span className="text-sm text-white">2024-06-10 09:30</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-slate-900/30 rounded-lg">
+                    <span className="text-sm text-slate-400">运行时长</span>
+                    <span className="text-sm text-white">2,847 小时</span>
+                  </div>
+                  <div className="flex items-center justify-between p-3 bg-slate-900/30 rounded-lg">
+                    <span className="text-sm text-slate-400">健康状态</span>
+                    <span className={`text-sm ${selectedEquipment.status === 'warning' ? 'text-amber-400' : 'text-emerald-400'}`}>
+                      {selectedEquipment.status === 'warning' ? '异常' : '良好'}
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <button
+                    onClick={handleGoToReport}
+                    className="w-full py-3 bg-red-500 hover:bg-red-600 text-white rounded-lg transition-colors flex items-center justify-center gap-2"
+                  >
+                    <AlertTriangle className="w-4 h-4" />
+                    发现故障，立即报修
+                  </button>
+                  <button
+                    onClick={() => setScanStep('scanning')}
+                    className="w-full py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors text-sm"
+                  >
+                    重新扫码
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {scanStep === 'report' && (
+              <div className="flex-1 overflow-y-auto space-y-4">
+                <div className="p-3 bg-blue-500/10 border border-blue-500/30 rounded-lg">
+                  <p className="text-sm text-blue-400">
+                    设备：<span className="font-medium text-white">{newOrder.equipmentName}</span>
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2">工单类型</label>
+                    <select
+                      value={newOrder.type}
+                      onChange={(e) => setNewOrder((prev) => ({ ...prev, type: e.target.value as WorkOrder['type'] }))}
+                      className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="repair">故障维修</option>
+                      <option value="inspection">巡检</option>
+                      <option value="maintenance">定期维护</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="block text-sm text-slate-400 mb-2">优先级</label>
+                    <select
+                      value={newOrder.priority}
+                      onChange={(e) => setNewOrder((prev) => ({ ...prev, priority: e.target.value as WorkOrder['priority'] }))}
+                      className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-blue-500"
+                    >
+                      <option value="low">低</option>
+                      <option value="medium">中</option>
+                      <option value="high">高</option>
+                      <option value="urgent">紧急</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="p-3 bg-slate-900/30 rounded-lg">
+                  <p className="text-xs text-slate-400 mb-1">自动分派</p>
+                  <p className="text-sm text-emerald-400">{getAssignee(newOrder.priority)}</p>
+                </div>
+
+                <div>
+                  <label className="block text-sm text-slate-400 mb-2">故障描述</label>
+                  <textarea
+                    value={newOrder.description}
+                    onChange={(e) => setNewOrder((prev) => ({ ...prev, description: e.target.value }))}
+                    placeholder="请描述故障现象和发现经过..."
+                    rows={4}
+                    className="w-full px-4 py-2 bg-slate-900/50 border border-slate-700 rounded-lg text-white placeholder-slate-500 focus:outline-none focus:border-blue-500 resize-none"
+                  />
+                </div>
+
+                <div className="flex gap-3 pt-2">
+                  <button
+                    onClick={() => setScanStep('result')}
+                    className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+                  >
+                    返回
+                  </button>
+                  <button
+                    onClick={handleSubmitScanOrder}
+                    className="flex-1 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors"
+                  >
+                    提交工单
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

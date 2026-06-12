@@ -2,9 +2,11 @@ import React, { useState, useEffect } from 'react';
 import { Bell, Clock, LogOut, Calendar, Download, Filter } from 'lucide-react';
 import { useAuth } from '@/context/AuthContext';
 import { useAlert } from '@/context/AlertContext';
+import { useFilter } from '@/context/FilterContext';
 import { AlertBanner } from '@/components/common/AlertBanner';
-import { formatDateTime } from '@/utils/format';
+import { formatDateTime, formatDate } from '@/utils/format';
 import { api } from '@/mock/api';
+import { generateMonthlyReport, generateComplianceReport, downloadCSV } from '@/utils/reportGenerator';
 
 interface HeaderProps {
   collapsed: boolean;
@@ -13,10 +15,9 @@ interface HeaderProps {
 export const Header: React.FC<HeaderProps> = ({ collapsed }) => {
   const { user, logout } = useAuth();
   const { alerts, unconfirmedCount, criticalCount, loadAlerts } = useAlert();
+  const { selectedShift, selectedDate, setSelectedShift, setSelectedDate } = useFilter();
   const [showNotifications, setShowNotifications] = useState(false);
   const [currentTime, setCurrentTime] = useState(new Date());
-  const [selectedShift, setSelectedShift] = useState<'all' | 'day' | 'night'>('all');
-  const [selectedDate, setSelectedDate] = useState('');
 
   useEffect(() => {
     loadAlerts();
@@ -26,10 +27,25 @@ export const Header: React.FC<HeaderProps> = ({ collapsed }) => {
 
   const handleExport = async (type: 'monthly' | 'compliance') => {
     try {
-      const result = await api.exportReport(type, { period: '2024-01' });
-      alert(`${type === 'monthly' ? '月度运营分析报告' : '环保合规明细'}导出成功！\n生成时间: ${result.generatedAt}`);
+      const now = new Date();
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const filterInfo = {
+        shift: selectedShift === 'all' ? '全部班次' : selectedShift === 'day' ? '白班' : '夜班',
+        date: selectedDate || '全部日期',
+      };
+
+      if (type === 'monthly') {
+        const data = await generateMonthlyReport(monthStr, filterInfo);
+        const fileName = `月度运营分析报告_${monthStr}.csv`;
+        downloadCSV(data.csvContent, fileName);
+      } else {
+        const data = await generateComplianceReport(monthStr, filterInfo);
+        const fileName = `环保合规明细_${monthStr}.csv`;
+        downloadCSV(data.csvContent, fileName);
+      }
     } catch (error) {
       console.error('Export failed:', error);
+      alert('导出失败，请稍后重试');
     }
   };
 

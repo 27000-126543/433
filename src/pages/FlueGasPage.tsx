@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { AlertTriangle, Download, RefreshCw, CloudRain, Wind, Thermometer, AlertCircle, CheckCircle, Lock, Unlock } from 'lucide-react';
+import { AlertTriangle, Download, RefreshCw, CloudRain, Wind, Thermometer, AlertCircle, CheckCircle, Lock, Unlock, X, FileText } from 'lucide-react';
 import { LineChart } from '@/components/charts/LineChart';
 import { GaugeChart } from '@/components/charts/GaugeChart';
 import { StatusBadge } from '@/components/common/StatusBadge';
@@ -9,6 +9,7 @@ import { usePermission } from '@/hooks/usePermission';
 import { api } from '@/mock/api';
 import { formatDateTime, formatNumber } from '@/utils/format';
 import { emissionStandards } from '@/mock/data/flueGas';
+import { generateComplianceReport, downloadCSV } from '@/utils/reportGenerator';
 
 export const FlueGasPage: React.FC = () => {
   const { flueGas, isConnected } = useRealtimeData(true);
@@ -19,6 +20,8 @@ export const FlueGasPage: React.FC = () => {
   const [chemicals, setChemicals] = useState<any[]>([]);
   const [equipmentLocked, setEquipmentLocked] = useState(false);
   const [lastUploadTime, setLastUploadTime] = useState(new Date());
+  const [showReviewModal, setShowReviewModal] = useState(false);
+  const [rectificationNotice, setRectificationNotice] = useState<any>(null);
 
   useEffect(() => {
     const loadData = async () => {
@@ -38,9 +41,65 @@ export const FlueGasPage: React.FC = () => {
     return () => clearInterval(uploadInterval);
   }, []);
 
+  const handleOpenReview = () => {
+    setShowReviewModal(true);
+  };
+
+  const allPollutantsStandard = () => {
+    if (!flueGas) return false;
+    return (
+      flueGas.so2 <= emissionStandards.so2 &&
+      flueGas.nox <= emissionStandards.nox &&
+      flueGas.dust <= emissionStandards.dust &&
+      flueGas.co <= emissionStandards.co &&
+      flueGas.hcl <= emissionStandards.hcl
+    );
+  };
+
+  const handleConfirmUnlock = () => {
+    if (!allPollutantsStandard()) {
+      alert('当前排放指标仍有超标项，无法解锁设备！请继续处理直至全部达标。');
+      return;
+    }
+    if (confirm('确认所有排放指标均已达标，解锁相关设备？')) {
+      setEquipmentLocked(false);
+      setRectificationNotice(null);
+      setShowReviewModal(false);
+      alert('设备已解锁，恢复正常运行');
+    }
+  };
+
+  const handleExport = async (type: 'monthly' | 'compliance') => {
+    try {
+      const now = new Date();
+      const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+      const filterInfo = { shift: '全部班次', date: '全部日期' };
+      
+      if (type === 'compliance') {
+        const data = await generateComplianceReport(monthStr, filterInfo);
+        const fileName = `环保合规明细_${monthStr}.csv`;
+        downloadCSV(data.csvContent, fileName);
+      } else {
+        const data = await generateComplianceReport(monthStr, filterInfo);
+        const fileName = `月度运营分析报告_${monthStr}.csv`;
+        downloadCSV(data.csvContent, fileName);
+      }
+    } catch (error) {
+      console.error('Export failed:', error);
+      alert('导出失败，请稍后重试');
+    }
+  };
+
   useEffect(() => {
     if (flueGas && !flueGas.isStandard && !equipmentLocked) {
       setEquipmentLocked(true);
+      setRectificationNotice({
+        id: `rect-${Date.now()}`,
+        title: '烟气排放超标整改通知',
+        content: '检测到烟气排放超过国家标准，相关设备已自动锁定。请立即排查原因并采取整改措施，整改完成后申请复核解锁。',
+        createTime: new Date().toISOString(),
+        status: 'pending',
+      });
       addAlert({
         id: `alert-${Date.now()}`,
         type: 'emission',
@@ -53,18 +112,6 @@ export const FlueGasPage: React.FC = () => {
       });
     }
   }, [flueGas, equipmentLocked, addAlert]);
-
-  const handleUnlockEquipment = () => {
-    if (confirm('确认排放已达标，要解锁相关设备吗？')) {
-      setEquipmentLocked(false);
-      alert('设备已解锁，恢复正常运行');
-    }
-  };
-
-  const handleExport = async (type: 'monthly' | 'compliance') => {
-    const result = await api.exportReport(type, { period: '2025-01' });
-    alert(`已生成${type === 'monthly' ? '月度运营分析报告' : '环保合规明细'}，时间：${result.generatedAt}`);
-  };
 
   const pollutants = [
     { key: 'so2', name: 'SO₂', unit: 'mg/m³', color: '#EF4444', standard: emissionStandards.so2 },
@@ -110,25 +157,45 @@ export const FlueGasPage: React.FC = () => {
         </div>
       </div>
 
-      {flueGas && !flueGas.isStandard && (
-        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse" />
+      {equipmentLocked && rectificationNotice && (
+        <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl p-4">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <div className="p-2 bg-amber-500/20 rounded-lg">
+                <FileText className="w-5 h-5 text-amber-400" />
+              </div>
               <div>
-                <p className="text-sm font-medium text-red-400">排放超标告警</p>
-                <p className="text-xs text-red-400/70 mt-0.5">检测到烟气排放超过国家标准，已自动启动应急程序并锁定相关设备</p>
+                <div className="flex items-center gap-2 mb-1">
+                  <p className="text-sm font-medium text-amber-400">{rectificationNotice.title}</p>
+                  <StatusBadge status="warning" text="整改中" />
+                </div>
+                <p className="text-xs text-amber-400/70">{rectificationNotice.content}</p>
+                <p className="text-[10px] text-amber-400/50 mt-2">
+                  生成时间：{formatDateTime(rectificationNotice.createTime)}
+                </p>
               </div>
             </div>
-            {hasPermission('rectification:manage') && equipmentLocked && (
+            {hasPermission('rectification:manage') && (
               <button
-                onClick={handleUnlockEquipment}
-                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg transition-colors flex items-center gap-2"
+                onClick={handleOpenReview}
+                className="px-4 py-2 bg-emerald-500 hover:bg-emerald-600 text-white text-sm rounded-lg transition-colors flex items-center gap-2 whitespace-nowrap"
               >
                 <Unlock className="w-4 h-4" />
                 复核解锁
               </button>
             )}
+          </div>
+        </div>
+      )}
+
+      {flueGas && !flueGas.isStandard && !equipmentLocked && (
+        <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-4">
+          <div className="flex items-center gap-3">
+            <AlertTriangle className="w-5 h-5 text-red-400 animate-pulse" />
+            <div>
+              <p className="text-sm font-medium text-red-400">排放超标告警</p>
+              <p className="text-xs text-red-400/70 mt-0.5">检测到烟气排放超过国家标准，请及时处理</p>
+            </div>
           </div>
         </div>
       )}
@@ -404,6 +471,114 @@ export const FlueGasPage: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {showReviewModal && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-slate-800 border border-slate-700 rounded-xl p-6 w-full max-w-lg">
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-lg font-semibold text-white">排放复核解锁</h3>
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="p-1 text-slate-400 hover:text-white hover:bg-slate-700 rounded-lg transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="p-3 bg-slate-900/50 rounded-lg">
+                <p className="text-sm text-slate-400 mb-2">复核说明</p>
+                <p className="text-xs text-slate-500">
+                  请确认所有烟气排放指标均已达标后，方可解锁设备。如仍有超标项，设备将继续锁定，整改通知继续有效。
+                </p>
+              </div>
+
+              <div className="space-y-2">
+                <p className="text-sm text-slate-400">实时排放指标复核</p>
+                {pollutants.map((pollutant) => {
+                  const value = getCurrentValue(pollutant.key);
+                  const exceeded = isExceeded(pollutant.key);
+                  return (
+                    <div
+                      key={pollutant.key}
+                      className={`flex items-center justify-between p-3 rounded-lg ${
+                        exceeded ? 'bg-red-500/10 border border-red-500/30' : 'bg-emerald-500/10 border border-emerald-500/30'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2">
+                        {exceeded ? (
+                          <AlertCircle className="w-4 h-4 text-red-400" />
+                        ) : (
+                          <CheckCircle className="w-4 h-4 text-emerald-400" />
+                        )}
+                        <span className={exceeded ? 'text-red-400' : 'text-emerald-400'}>
+                          {pollutant.name}
+                        </span>
+                      </div>
+                      <div className="text-right">
+                        <p className={`font-mono font-medium ${exceeded ? 'text-red-400' : 'text-white'}`}>
+                          {formatNumber(value, 1)}
+                          <span className="text-xs text-slate-500 ml-1">{pollutant.unit}</span>
+                        </p>
+                        <p className="text-[10px] text-slate-500">
+                          标准：{pollutant.standard} {pollutant.unit}
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className={`p-3 rounded-lg ${
+                allPollutantsStandard() 
+                  ? 'bg-emerald-500/10 border border-emerald-500/30' 
+                  : 'bg-red-500/10 border border-red-500/30'
+              }`}>
+                <div className="flex items-center gap-2">
+                  {allPollutantsStandard() ? (
+                    <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  ) : (
+                    <AlertTriangle className="w-5 h-5 text-red-400" />
+                  )}
+                  <div>
+                    <p className={`text-sm font-medium ${
+                      allPollutantsStandard() ? 'text-emerald-400' : 'text-red-400'
+                    }`}>
+                      {allPollutantsStandard() ? '全部达标，可以解锁' : '仍有超标项，暂不可解锁'}
+                    </p>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {allPollutantsStandard() 
+                        ? '所有排放指标均符合国家标准，可解除设备锁定' 
+                        : '请继续整改直至所有指标达标后再申请复核'}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex gap-3 mt-6">
+              <button
+                onClick={() => setShowReviewModal(false)}
+                className="flex-1 py-2 bg-slate-700 hover:bg-slate-600 text-white rounded-lg transition-colors"
+              >
+                取消
+              </button>
+              <button
+                onClick={handleConfirmUnlock}
+                disabled={!allPollutantsStandard()}
+                className={`flex-1 py-2 rounded-lg transition-colors flex items-center justify-center gap-2 ${
+                  allPollutantsStandard()
+                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white'
+                    : 'bg-slate-600 text-slate-400 cursor-not-allowed'
+                }`}
+              >
+                <Unlock className="w-4 h-4" />
+                确认解锁
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

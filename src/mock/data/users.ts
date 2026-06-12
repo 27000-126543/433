@@ -3,7 +3,7 @@ import { User, rolePermissions } from '@/types';
 export const mockUsers: User[] = [
   {
     id: '1',
-    username: 'admin',
+    username: 'director',
     name: '张厂长',
     role: 'director',
     permissions: rolePermissions.director,
@@ -11,7 +11,7 @@ export const mockUsers: User[] = [
   },
   {
     id: '2',
-    username: 'operator1',
+    username: 'operator',
     name: '李值长',
     role: 'operator',
     permissions: rolePermissions.operator,
@@ -19,7 +19,7 @@ export const mockUsers: User[] = [
   },
   {
     id: '3',
-    username: 'gatekeeper1',
+    username: 'gatekeeper',
     name: '王值班',
     role: 'gatekeeper',
     permissions: rolePermissions.gatekeeper,
@@ -27,7 +27,7 @@ export const mockUsers: User[] = [
   },
   {
     id: '4',
-    username: 'maintenance1',
+    username: 'maintenance',
     name: '赵维修',
     role: 'maintenance',
     permissions: rolePermissions.maintenance,
@@ -35,7 +35,7 @@ export const mockUsers: User[] = [
   },
   {
     id: '5',
-    username: 'safety1',
+    username: 'safety',
     name: '刘安环',
     role: 'safety',
     permissions: rolePermissions.safety,
@@ -43,7 +43,7 @@ export const mockUsers: User[] = [
   },
   {
     id: '6',
-    username: 'finance1',
+    username: 'finance',
     name: '陈财务',
     role: 'finance',
     permissions: rolePermissions.finance,

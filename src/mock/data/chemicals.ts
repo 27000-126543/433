@@ -134,12 +134,14 @@ export const mockChemicalConsumption = () => {
   const days = [];
   const lime = [];
   const activatedCarbon = [];
+  const timestamps = [];
   const now = new Date();
   for (let i = 29; i >= 0; i--) {
     const time = new Date(now.getTime() - i * 86400000);
     days.push(format(time, 'MM-dd'));
+    timestamps.push(format(time, 'yyyy-MM-dd\'T\'HH:mm:ss'));
     lime.push(15 + Math.random() * 5);
     activatedCarbon.push(2 + Math.random() * 1);
   }
-  return { days, lime, activatedCarbon };
+  return { days, lime, activatedCarbon, timestamps };
 };

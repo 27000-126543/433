@@ -31,6 +31,7 @@ export const mockIncineratorHistory = (count: number = 60) => {
     const time = new Date(now.getTime() - i * 5000);
     data.push({
       time: format(time, 'HH:mm:ss'),
+      timestamp: format(time, 'yyyy-MM-dd\'T\'HH:mm:ss'),
       temp1: 850 + Math.random() * 80,
       temp2: 860 + Math.random() * 70,
       temp3: 840 + Math.random() * 90,
@@ -49,13 +50,15 @@ export const mockPowerGeneration = () => {
   const hours = [];
   const actual = [];
   const target = [];
+  const timestamps = [];
   const now = new Date();
   for (let i = 23; i >= 0; i--) {
     const time = new Date(now.getTime() - i * 3600000);
     hours.push(format(time, 'HH:00'));
+    timestamps.push(format(time, 'yyyy-MM-dd\'T\'HH:mm:ss'));
     const base = 10000 + Math.random() * 6000;
     actual.push(Math.floor(base));
     target.push(12000);
   }
-  return { hours, actual, target };
+  return { hours, actual, target, timestamps };
 };
