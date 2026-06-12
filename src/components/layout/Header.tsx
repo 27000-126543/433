@@ -33,14 +33,17 @@ export const Header: React.FC<HeaderProps> = ({ collapsed }) => {
         shift: selectedShift === 'all' ? '全部班次' : selectedShift === 'day' ? '白班' : '夜班',
         date: selectedDate || '全部日期',
       };
+      
+      const datePart = selectedDate ? `_${selectedDate}` : '';
+      const shiftPart = selectedShift !== 'all' ? `_${filterInfo.shift}` : '';
 
       if (type === 'monthly') {
         const data = await generateMonthlyReport(monthStr, filterInfo);
-        const fileName = `月度运营分析报告_${monthStr}.csv`;
+        const fileName = `月度运营分析报告_${monthStr}${datePart}${shiftPart}.csv`;
         downloadCSV(data.csvContent, fileName);
       } else {
         const data = await generateComplianceReport(monthStr, filterInfo);
-        const fileName = `环保合规明细_${monthStr}.csv`;
+        const fileName = `环保合规明细_${monthStr}${datePart}${shiftPart}.csv`;
         downloadCSV(data.csvContent, fileName);
       }
     } catch (error) {

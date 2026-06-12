@@ -70,14 +70,18 @@ export const DashboardPage: React.FC = () => {
     return parts.length > 0 ? parts.join(' · ') : '全量数据';
   }, [selectedShift, selectedDate]);
 
+  const getTimeField = (item: any): string => {
+    return item.timestamp || item.time || item.arrivalTime || item.createTime || '';
+  };
+
   const filteredIncineratorHistory = useMemo(() => {
     if (selectedShift === 'all' && !selectedDate) return rawIncineratorHistory;
-    return rawIncineratorHistory.filter(item => matchFilter(item.time || item.timestamp || '', selectedShift, selectedDate));
+    return rawIncineratorHistory.filter(item => matchFilter(getTimeField(item), selectedShift, selectedDate));
   }, [rawIncineratorHistory, selectedShift, selectedDate]);
 
   const filteredFlueGasHistory = useMemo(() => {
     if (selectedShift === 'all' && !selectedDate) return rawFlueGasHistory;
-    return rawFlueGasHistory.filter(item => matchFilter(item.time || item.timestamp || '', selectedShift, selectedDate));
+    return rawFlueGasHistory.filter(item => matchFilter(getTimeField(item), selectedShift, selectedDate));
   }, [rawFlueGasHistory, selectedShift, selectedDate]);
 
   const filteredPowerData = useMemo(() => {
@@ -116,12 +120,14 @@ export const DashboardPage: React.FC = () => {
 
   const filteredVehicles = useMemo(() => {
     if (selectedShift === 'all' && !selectedDate) return rawVehicles;
-    return rawVehicles.filter(v => matchFilter(v.arrivalTime || '', selectedShift, selectedDate));
+    return rawVehicles.filter(v => matchFilter(getTimeField(v), selectedShift, selectedDate));
   }, [rawVehicles, selectedShift, selectedDate]);
+
+  const hasFilter = selectedShift !== 'all' || selectedDate;
 
   const computedDashboardData = useMemo(() => {
     if (!rawDashboardData) return null;
-    const isFiltered = selectedShift !== 'all' || selectedDate;
+    const isFiltered = hasFilter;
     
     let todayVehicles = rawDashboardData.todayVehicles;
     let todayWasteWeight = rawDashboardData.todayWasteWeight;
@@ -136,28 +142,35 @@ export const DashboardPage: React.FC = () => {
       todayWasteWeight = Math.round(todayWasteWeight);
       
       if (filteredIncineratorHistory.length > 0) {
-        const loads = filteredIncineratorHistory.map(i => (i.load1 + i.load2 + i.load3) / 3 || i.load || 0);
-        incineratorLoad = Math.round(loads.reduce((a, b) => a + b, 0) / loads.length);
+        const loads = filteredIncineratorHistory.map(i => {
+          if (typeof i.load1 === 'number' && typeof i.load2 === 'number' && typeof i.load3 === 'number') {
+            return (i.load1 + i.load2 + i.load3) / 3;
+          }
+          return i.load || 0;
+        });
+        if (loads.length > 0) {
+          incineratorLoad = Math.round(loads.reduce((a, b) => a + b, 0) / loads.length);
+        }
       }
       
       if (filteredPowerData.actual.length > 0) {
         totalPowerGeneration = filteredPowerData.actual.reduce((a, b) => a + b, 0);
+      } else {
+        totalPowerGeneration = 0;
       }
       
       if (filteredFlueGasHistory.length > 0) {
         const compliant = filteredFlueGasHistory.filter(f => f.isStandard).length;
         emissionComplianceRate = Math.round((compliant / filteredFlueGasHistory.length) * 1000) / 10;
+      } else {
+        emissionComplianceRate = 0;
       }
       
-      if (rawWorkOrders.length > 0) {
-        const relevant = selectedDate 
-          ? rawWorkOrders.filter(w => matchFilter(w.createTime || '', selectedShift, selectedDate))
-          : rawWorkOrders;
-        const completed = relevant.filter(w => w.status === 'completed').length;
-        if (relevant.length > 0) {
-          equipmentAvailability = Math.round((completed / relevant.length) * 1000) / 10;
-          equipmentAvailability = Math.max(85, Math.min(100, equipmentAvailability));
-        }
+      const relevantWorkOrders = rawWorkOrders.filter(w => matchFilter(getTimeField(w), selectedShift, selectedDate));
+      if (relevantWorkOrders.length > 0) {
+        const completed = relevantWorkOrders.filter(w => w.status === 'completed').length;
+        equipmentAvailability = Math.round((completed / relevantWorkOrders.length) * 1000) / 10;
+        equipmentAvailability = Math.max(85, Math.min(100, equipmentAvailability));
       }
     }
 
@@ -170,7 +183,7 @@ export const DashboardPage: React.FC = () => {
       todayVehicles,
       todayWasteWeight,
     };
-  }, [rawDashboardData, filteredVehicles, filteredIncineratorHistory, filteredPowerData, filteredFlueGasHistory, rawWorkOrders, selectedShift, selectedDate]);
+  }, [rawDashboardData, filteredVehicles, filteredIncineratorHistory, filteredPowerData, filteredFlueGasHistory, rawWorkOrders, selectedShift, selectedDate, hasFilter]);
 
   const dashboardData = computedDashboardData;
 

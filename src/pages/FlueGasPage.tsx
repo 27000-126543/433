@@ -9,12 +9,14 @@ import { usePermission } from '@/hooks/usePermission';
 import { api } from '@/mock/api';
 import { formatDateTime, formatNumber } from '@/utils/format';
 import { emissionStandards } from '@/mock/data/flueGas';
-import { generateComplianceReport, downloadCSV } from '@/utils/reportGenerator';
+import { generateComplianceReport, generateMonthlyReport, downloadCSV } from '@/utils/reportGenerator';
+import { useFilter } from '@/context/FilterContext';
 
 export const FlueGasPage: React.FC = () => {
   const { flueGas, isConnected } = useRealtimeData(true);
   const { alerts, addAlert } = useAlert();
   const { hasPermission } = usePermission();
+  const { selectedShift, selectedDate } = useFilter();
   const [historyData, setHistoryData] = useState<any[]>([]);
   const [selectedPollutant, setSelectedPollutant] = useState('so2');
   const [chemicals, setChemicals] = useState<any[]>([]);
@@ -73,15 +75,22 @@ export const FlueGasPage: React.FC = () => {
     try {
       const now = new Date();
       const monthStr = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
-      const filterInfo = { shift: '全部班次', date: '全部日期' };
+      const filterInfo = {
+        shift: selectedShift === 'all' ? '全部班次' : selectedShift === 'day' ? '白班' : '夜班',
+        date: selectedDate || '全部日期',
+      };
       
       if (type === 'compliance') {
         const data = await generateComplianceReport(monthStr, filterInfo);
-        const fileName = `环保合规明细_${monthStr}.csv`;
+        const datePart = selectedDate ? `_${selectedDate}` : '';
+        const shiftPart = selectedShift !== 'all' ? `_${filterInfo.shift}` : '';
+        const fileName = `环保合规明细_${monthStr}${datePart}${shiftPart}.csv`;
         downloadCSV(data.csvContent, fileName);
       } else {
-        const data = await generateComplianceReport(monthStr, filterInfo);
-        const fileName = `月度运营分析报告_${monthStr}.csv`;
+        const data = await generateMonthlyReport(monthStr, filterInfo);
+        const datePart = selectedDate ? `_${selectedDate}` : '';
+        const shiftPart = selectedShift !== 'all' ? `_${filterInfo.shift}` : '';
+        const fileName = `月度运营分析报告_${monthStr}${datePart}${shiftPart}.csv`;
         downloadCSV(data.csvContent, fileName);
       }
     } catch (error) {

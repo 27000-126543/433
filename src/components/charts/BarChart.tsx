@@ -83,5 +83,15 @@ export const BarChart: React.FC<BarChartProps> = ({
     })),
   };
 
+  const hasData = series.some(s => s.data && s.data.length > 0 && s.data.some(v => v !== undefined && v !== null));
+  
+  if (!xData || xData.length === 0 || !hasData) {
+    return (
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: '#64748b', fontSize: '14px' }}>暂无数据</p>
+      </div>
+    );
+  }
+
   return <ReactECharts option={option} style={{ height }} opts={{ renderer: 'canvas' }} />;
 };

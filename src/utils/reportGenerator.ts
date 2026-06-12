@@ -1,5 +1,6 @@
 import { api } from '@/mock/api';
 import { formatDateTime, formatNumber } from './format';
+import { matchFilter, ShiftType } from '@/context/FilterContext';
 
 export const escapeCSV = (value: string | number): string => {
   const str = String(value);
@@ -28,11 +29,27 @@ export interface FilterInfo {
   date: string;
 }
 
+const parseFilterInfo = (filterInfo: FilterInfo): { shift: ShiftType; date: string } => {
+  let shift: ShiftType = 'all';
+  if (filterInfo.shift === '白班') shift = 'day';
+  else if (filterInfo.shift === '夜班') shift = 'night';
+  
+  const date = filterInfo.date === '全部日期' ? '' : filterInfo.date;
+  
+  return { shift, date };
+};
+
+const getTimeField = (item: any): string => {
+  return item.timestamp || item.time || item.arrivalTime || item.createTime || '';
+};
+
 export const generateMonthlyReport = async (
   month: string,
   filterInfo: FilterInfo
 ): Promise<{ csvContent: string; summary: any }> => {
   const lines: string[] = [];
+  const { shift, date } = parseFilterInfo(filterInfo);
+  const hasFilter = shift !== 'all' || date;
 
   lines.push('大型垃圾焚烧发电厂 - 月度运营分析报告');
   lines.push(`月份,${month}`);
@@ -42,10 +59,29 @@ export const generateMonthlyReport = async (
   lines.push('');
 
   try {
-    const vehicles = await api.getVehicles();
-    const incinerators = await api.getIncinerators();
-    const workOrders = await api.getWorkOrders();
+    const allVehicles = await api.getVehicles();
+    const allIncinerators = await api.getIncinerators();
+    const allWorkOrders = await api.getWorkOrders();
+    const incineratorHistory = await api.getIncineratorHistory();
     const chemicals = await api.getChemicals();
+    
+    const vehicles = hasFilter 
+      ? allVehicles.filter(v => matchFilter(getTimeField(v), shift, date))
+      : allVehicles;
+    const workOrders = hasFilter
+      ? allWorkOrders.filter(w => matchFilter(getTimeField(w), shift, date))
+      : allWorkOrders;
+    const filteredHistory = hasFilter
+      ? incineratorHistory.filter(h => matchFilter(getTimeField(h), shift, date))
+      : incineratorHistory;
+    
+    const incinerators = filteredHistory.length > 0 
+      ? filteredHistory.map((h: any, idx: number) => ({
+          ...allIncinerators[idx % allIncinerators.length],
+          load: typeof h.load1 === 'number' ? (h.load1 + h.load2 + h.load3) / 3 : h.load,
+          temperature: typeof h.temp1 === 'number' ? (h.temp1 + h.temp2 + h.temp3) / 3 : undefined,
+        }))
+      : allIncinerators;
 
     const totalWaste = vehicles.reduce((sum, v) => sum + (v.weight || 0), 0);
     const totalPower = incinerators.reduce((sum, i) => sum + (i.powerGeneration || 0), 0);
@@ -145,6 +181,8 @@ export const generateComplianceReport = async (
   filterInfo: FilterInfo
 ): Promise<{ csvContent: string; summary: any }> => {
   const lines: string[] = [];
+  const { shift, date } = parseFilterInfo(filterInfo);
+  const hasFilter = shift !== 'all' || date;
 
   lines.push('大型垃圾焚烧发电厂 - 环保合规明细报告');
   lines.push(`月份,${month}`);
@@ -154,9 +192,19 @@ export const generateComplianceReport = async (
   lines.push('');
 
   try {
-    const flueGasList = await api.getFlueGasHistory();
-    const alerts = await api.getAlerts();
-    const leachateList = await api.getLeachateHistory();
+    const allFlueGasList = await api.getFlueGasHistory();
+    const allAlerts = await api.getAlerts();
+    const allLeachateList = await api.getLeachateHistory();
+    
+    const flueGasList = hasFilter
+      ? allFlueGasList.filter(fg => matchFilter(getTimeField(fg), shift, date))
+      : allFlueGasList;
+    const alerts = hasFilter
+      ? allAlerts.filter(a => matchFilter(getTimeField(a), shift, date))
+      : allAlerts;
+    const leachateList = hasFilter
+      ? allLeachateList.filter(l => matchFilter(getTimeField(l), shift, date))
+      : allLeachateList;
 
     const emissionStandards = {
       so2: 100,

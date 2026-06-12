@@ -110,5 +110,13 @@ export const LineChart: React.FC<LineChartProps> = ({
     })),
   };
 
+  if (!data || data.length === 0) {
+    return (
+      <div style={{ height, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <p style={{ color: '#64748b', fontSize: '14px' }}>暂无数据</p>
+      </div>
+    );
+  }
+
   return <ReactECharts option={option} style={{ height }} opts={{ renderer: 'canvas' }} />;
 };
