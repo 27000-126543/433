@@ -191,6 +191,8 @@ export const DashboardPage: React.FC = () => {
     let equipmentAvailability: number | null = null;
     let todayVehicles: number | null = null;
     let todayWasteWeight: number | null = null;
+    let chemicalLime: number | null = null;
+    let chemicalCarbon: number | null = null;
 
     if (incHist.length > 0) {
       const loads = incHist.map(i => {
@@ -228,8 +230,16 @@ export const DashboardPage: React.FC = () => {
       todayWasteWeight = Math.round(vehicles.reduce((sum, v) => sum + (v.weight || 0), 0));
     }
 
-    const chemicalLime = chem.lime.reduce((a, b) => a + b, 0);
-    const chemicalCarbon = chem.activatedCarbon.reduce((a, b) => a + b, 0);
+    if (chem.lime.length > 0) {
+      chemicalLime = Math.round(chem.lime.reduce((a, b) => a + b, 0) * 100) / 100;
+    } else if (hasFilter) {
+      chemicalLime = 0;
+    }
+    if (chem.activatedCarbon.length > 0) {
+      chemicalCarbon = Math.round(chem.activatedCarbon.reduce((a, b) => a + b, 0) * 100) / 100;
+    } else if (hasFilter) {
+      chemicalCarbon = 0;
+    }
 
     return {
       incineratorLoad,
@@ -285,6 +295,8 @@ export const DashboardPage: React.FC = () => {
       equipmentAvailability: stats.equipmentAvailability ?? rawDashboardData.equipmentAvailability,
       todayVehicles: stats.todayVehicles ?? rawDashboardData.todayVehicles,
       todayWasteWeight: stats.todayWasteWeight ?? rawDashboardData.todayWasteWeight,
+      chemicalLime: stats.chemicalLime ?? baselineStats.chemicalLime ?? 0,
+      chemicalCarbon: stats.chemicalCarbon ?? baselineStats.chemicalCarbon ?? 0,
     };
   }, [filteredStats, baselineStats, rawDashboardData, hasFilter]);
 
@@ -331,7 +343,7 @@ export const DashboardPage: React.FC = () => {
 
       <AlertMarquee alerts={alerts} />
 
-      <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4">
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         <MetricCard
           title="焚烧线负荷"
           value={dataAvailability.incinerator ? dashboardData.incineratorLoad : 0}
@@ -384,6 +396,7 @@ export const DashboardPage: React.FC = () => {
           icon={Wrench}
           color="purple"
           delay={400}
+          noData={hasFilter && filteredStats?.equipmentAvailability === null}
           trend={hasFilter && baselineStats && filteredStats
             ? (() => {
                 const d = calcDiff(filteredStats.equipmentAvailability, baselineStats.equipmentAvailability);
@@ -398,6 +411,7 @@ export const DashboardPage: React.FC = () => {
           icon={Truck}
           color="cyan"
           delay={500}
+          noData={hasFilter && filteredStats?.todayVehicles === null}
           trend={hasFilter && baselineStats && filteredStats
             ? (() => {
                 const d = calcDiff(filteredStats.todayVehicles, baselineStats.todayVehicles);
@@ -412,9 +426,40 @@ export const DashboardPage: React.FC = () => {
           icon={Package}
           color="amber"
           delay={600}
+          noData={hasFilter && filteredStats?.todayWasteWeight === null}
           trend={hasFilter && baselineStats && filteredStats
             ? (() => {
                 const d = calcDiff(filteredStats.todayWasteWeight, baselineStats.todayWasteWeight);
+                return d ? { ...d, absUnit: '吨', label: ' 较全量' } : undefined;
+              })()
+            : undefined}
+        />
+        <MetricCard
+          title="石灰消耗"
+          value={formatNumber(dashboardData.chemicalLime || 0, 2)}
+          unit="吨"
+          icon={Droplet}
+          color="blue"
+          delay={700}
+          noData={hasFilter && filteredStats?.chemicalLime === null}
+          trend={hasFilter && baselineStats && filteredStats
+            ? (() => {
+                const d = calcDiff(filteredStats.chemicalLime, baselineStats.chemicalLime);
+                return d ? { ...d, absUnit: '吨', label: ' 较全量' } : undefined;
+              })()
+            : undefined}
+        />
+        <MetricCard
+          title="活性炭消耗"
+          value={formatNumber(dashboardData.chemicalCarbon || 0, 2)}
+          unit="吨"
+          icon={Gauge}
+          color="emerald"
+          delay={800}
+          noData={hasFilter && filteredStats?.chemicalCarbon === null}
+          trend={hasFilter && baselineStats && filteredStats
+            ? (() => {
+                const d = calcDiff(filteredStats.chemicalCarbon, baselineStats.chemicalCarbon);
                 return d ? { ...d, absUnit: '吨', label: ' 较全量' } : undefined;
               })()
             : undefined}

@@ -64,6 +64,8 @@ export const generateMonthlyReport = async (
     const allWorkOrders = await api.getWorkOrders();
     const incineratorHistory = await api.getIncineratorHistory();
     const chemicals = await api.getChemicals();
+    const allFlueGasList = await api.getFlueGasHistory();
+    const allAlerts = await api.getAlerts();
     
     const vehicles = hasFilter 
       ? allVehicles.filter(v => matchFilter(getTimeField(v), shift, date))
@@ -74,6 +76,35 @@ export const generateMonthlyReport = async (
     const filteredHistory = hasFilter
       ? incineratorHistory.filter(h => matchFilter(getTimeField(h), shift, date))
       : incineratorHistory;
+    const flueGasList = hasFilter
+      ? allFlueGasList.filter(fg => matchFilter(getTimeField(fg), shift, date))
+      : allFlueGasList;
+    const alerts = hasFilter
+      ? allAlerts.filter(a => matchFilter(getTimeField(a), shift, date))
+      : allAlerts;
+    
+    const emissionStandards = {
+      so2: 100,
+      nox: 300,
+      dust: 30,
+      co: 100,
+      hcl: 60
+    };
+
+    const envExceedRecords: any[] = [];
+    flueGasList.forEach(fg => {
+      if (fg.so2 > emissionStandards.so2) envExceedRecords.push({ time: fg.timestamp, type: 'SO2', value: fg.so2, standard: emissionStandards.so2 });
+      if (fg.nox > emissionStandards.nox) envExceedRecords.push({ time: fg.timestamp, type: 'NOx', value: fg.nox, standard: emissionStandards.nox });
+      if (fg.dust > emissionStandards.dust) envExceedRecords.push({ time: fg.timestamp, type: '粉尘', value: fg.dust, standard: emissionStandards.dust });
+      if (fg.co > emissionStandards.co) envExceedRecords.push({ time: fg.timestamp, type: 'CO', value: fg.co, standard: emissionStandards.co });
+      if (fg.hcl > emissionStandards.hcl) envExceedRecords.push({ time: fg.timestamp, type: 'HCl', value: fg.hcl, standard: emissionStandards.hcl });
+    });
+
+    const envComplianceRate = flueGasList.length > 0
+      ? Math.round(((flueGasList.length - envExceedRecords.filter(r => r).length / 5) / flueGasList.length) * 1000) / 10
+      : 100;
+
+    const envAlerts = alerts.filter(a => a.type === 'emission');
     
     const incinerators = filteredHistory.length > 0 
       ? filteredHistory.map((h: any, idx: number) => ({
@@ -100,6 +131,9 @@ export const generateMonthlyReport = async (
     lines.push(`平均焚烧线负荷,${formatNumber(avgLoad, 1)},%`);
     lines.push(`设备完好率,${formatNumber(equipmentRate, 1)},%`);
     lines.push(`完成工单数量,${completedOrders},单`);
+    lines.push(`烟气排放合规率,${formatNumber(Math.min(envComplianceRate, 100), 2)},%`);
+    lines.push(`超标记录数量,${envExceedRecords.length},条`);
+    lines.push(`环保告警数量,${envAlerts.length},条`);
     lines.push('');
 
     lines.push('=== 二、焚烧炉运行数据 ===');
@@ -165,6 +199,39 @@ export const generateMonthlyReport = async (
         formatDateTime(w.createTime)
       ].map(escapeCSV).join(','));
     });
+    lines.push('');
+
+    lines.push('=== 六、环保合规摘要 ===');
+    lines.push('指标名称,数值,单位');
+    lines.push(`烟气检测次数,${flueGasList.length},次`);
+    lines.push(`排放合规率,${formatNumber(Math.min(envComplianceRate, 100), 2)},%`);
+    lines.push(`超标记录数,${envExceedRecords.length},条`);
+    lines.push(`环保告警数,${envAlerts.length},条`);
+    lines.push('');
+
+    lines.push('=== 七、超标记录清单 ===');
+    if (envExceedRecords.length > 0) {
+      lines.push('时间,污染物类型,实测值(mg/m³),标准限值(mg/m³),超标倍数');
+      envExceedRecords.slice(0, 10).forEach(r => {
+        const multiple = Math.round((r.value / r.standard) * 100) / 100;
+        lines.push([
+          formatDateTime(r.time),
+          r.type,
+          formatNumber(r.value, 2),
+          r.standard,
+          formatNumber(multiple, 2)
+        ].map(escapeCSV).join(','));
+      });
+    } else {
+      lines.push('本周期内无超标记录');
+    }
+    lines.push('');
+
+    lines.push('=== 八、环保合规结论 ===');
+    lines.push(envExceedRecords.length === 0
+      ? '本周期内各项环保指标全部达标，运营合规'
+      : `本周期内共发现${envExceedRecords.length}条超标记录，需重点关注整改`);
+    lines.push('');
 
     const summary = {
       type: 'monthly',
@@ -177,7 +244,15 @@ export const generateMonthlyReport = async (
         workOrderCount: workOrders.length,
         completedOrders: workOrders.filter(w => w.status === 'completed').length,
         chemicalCount: chemicals.length,
+        flueGasTests: flueGasList.length,
+        exceedCount: envExceedRecords.length,
+        complianceRate: formatNumber(Math.min(envComplianceRate, 100), 2),
+        envAlerts: envAlerts.length,
       },
+      exceedRecords: envExceedRecords.slice(0, 10),
+      conclusion: envExceedRecords.length === 0
+        ? '本周期内各项环保指标全部达标，运营合规'
+        : `本周期内共发现${envExceedRecords.length}条超标记录，需重点关注整改`,
       records: {
         vehicles: vehicles.length,
         incineratorHistory: incinerators.length,

@@ -260,7 +260,7 @@ export const Header: React.FC<HeaderProps> = ({ collapsed }) => {
 
                 <div className="bg-slate-800/50 rounded-xl p-4 border border-slate-700/50">
                   <h3 className="text-sm font-medium text-slate-300 mb-3">关键指标汇总</h3>
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                     {previewData.summary.type === 'monthly' ? (
                       <>
                         <div>
@@ -278,6 +278,38 @@ export const Header: React.FC<HeaderProps> = ({ collapsed }) => {
                         <div>
                           <p className="text-xs text-slate-500 mb-1">已完成</p>
                           <p className="text-base font-mono font-bold text-emerald-400">{previewData.summary.keyMetrics?.completedOrders || 0} 单</p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">排放合规率</p>
+                          <p className={`text-base font-mono font-bold ${
+                            parseFloat(previewData.summary.keyMetrics?.complianceRate || 0) >= 99
+                              ? 'text-emerald-400'
+                              : parseFloat(previewData.summary.keyMetrics?.complianceRate || 0) >= 95
+                                ? 'text-amber-400'
+                                : 'text-red-400'
+                          }`}>
+                            {previewData.summary.keyMetrics?.complianceRate || 0}%
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">超标记录</p>
+                          <p className={`text-base font-mono font-bold ${
+                            (previewData.summary.keyMetrics?.exceedCount || 0) > 0 ? 'text-red-400' : 'text-emerald-400'
+                          }`}>
+                            {previewData.summary.keyMetrics?.exceedCount || 0} 条
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">环保告警</p>
+                          <p className={`text-base font-mono font-bold ${
+                            (previewData.summary.keyMetrics?.envAlerts || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'
+                          }`}>
+                            {previewData.summary.keyMetrics?.envAlerts || 0} 条
+                          </p>
+                        </div>
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">烟气检测</p>
+                          <p className="text-base font-mono font-bold text-white">{previewData.summary.keyMetrics?.flueGasTests || 0} 次</p>
                         </div>
                       </>
                     ) : (
@@ -319,7 +351,7 @@ export const Header: React.FC<HeaderProps> = ({ collapsed }) => {
                   </div>
                 </div>
 
-                {previewData.summary.type === 'compliance' && previewData.summary.exceedRecords?.length > 0 && (
+                {previewData.summary.exceedRecords?.length > 0 && (
                   <div className="bg-red-500/10 rounded-xl p-4 border border-red-500/30">
                     <div className="flex items-center gap-2 mb-3">
                       <AlertTriangle className="w-4 h-4 text-red-400" />
@@ -343,23 +375,18 @@ export const Header: React.FC<HeaderProps> = ({ collapsed }) => {
                 )}
 
                 <div className={`rounded-xl p-4 border ${
-                  previewData.summary.type === 'compliance'
-                    ? (previewData.summary.keyMetrics?.exceedCount || 0) > 0
-                      ? 'bg-amber-500/10 border-amber-500/30'
-                      : 'bg-emerald-500/10 border-emerald-500/30'
-                    : 'bg-blue-500/10 border-blue-500/30'
+                  (previewData.summary.keyMetrics?.exceedCount || 0) > 0
+                    ? 'bg-amber-500/10 border-amber-500/30'
+                    : 'bg-emerald-500/10 border-emerald-500/30'
                 }`}>
                   <div className="flex items-start gap-2">
-                    {previewData.summary.type === 'compliance' ? (
-                      (previewData.summary.keyMetrics?.exceedCount || 0) > 0
-                        ? <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
-                        : <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
-                    ) : <CheckCircle className="w-4 h-4 text-blue-400 mt-0.5 flex-shrink-0" />}
+                    {(previewData.summary.keyMetrics?.exceedCount || 0) > 0
+                      ? <AlertCircle className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+                      : <CheckCircle className="w-4 h-4 text-emerald-400 mt-0.5 flex-shrink-0" />
+                    }
                     <div>
                       <h3 className={`text-sm font-medium mb-1 ${
-                        previewData.summary.type === 'compliance'
-                          ? (previewData.summary.keyMetrics?.exceedCount || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'
-                          : 'text-blue-400'
+                        (previewData.summary.keyMetrics?.exceedCount || 0) > 0 ? 'text-amber-400' : 'text-emerald-400'
                       }`}>
                         {previewData.summary.type === 'compliance' ? '环保合规结论' : '运营汇总结论'}
                       </h3>
